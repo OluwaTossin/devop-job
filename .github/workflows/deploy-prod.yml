@@ -220,22 +220,32 @@ jobs:
         ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
         echo "AWS Account ID: $ACCOUNT_ID"
         
+        # Set variables for consistency
+        DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}"
+        
         # Import Lambda functions if they exist
         echo "Importing Lambda functions..."
-        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" aws_lambda_function.admin_login devops-job-portal-prod-admin-login 2>/dev/null && echo "✅ Admin login Lambda imported" || echo "⚠️  Admin login Lambda import skipped"
-        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" aws_lambda_function.submit_cv devops-job-portal-prod-submit-cv 2>/dev/null && echo "✅ Submit CV Lambda imported" || echo "⚠️  Submit CV Lambda import skipped"
-        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" aws_lambda_function.list_applications devops-job-portal-prod-list-applications 2>/dev/null && echo "✅ List applications Lambda imported" || echo "⚠️  List applications Lambda import skipped"
-        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" aws_lambda_function.get_application devops-job-portal-prod-get-application 2>/dev/null && echo "✅ Get application Lambda imported" || echo "⚠️  Get application Lambda import skipped"
+        terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_lambda_function.admin_login devops-job-portal-prod-admin-login 2>/dev/null && echo "✅ Admin login Lambda imported" || echo "⚠️  Admin login Lambda import skipped"
+        terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_lambda_function.submit_cv devops-job-portal-prod-submit-cv 2>/dev/null && echo "✅ Submit CV Lambda imported" || echo "⚠️  Submit CV Lambda import skipped"
+        terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_lambda_function.list_applications devops-job-portal-prod-list-applications 2>/dev/null && echo "✅ List applications Lambda imported" || echo "⚠️  List applications Lambda import skipped"
+        terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_lambda_function.get_application devops-job-portal-prod-get-application 2>/dev/null && echo "✅ Get application Lambda imported" || echo "⚠️  Get application Lambda import skipped"
+        
+        # Import Lambda permissions
+        echo "Importing Lambda permissions..."
+        terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_lambda_permission.admin_login devops-job-portal-prod-admin-login/AllowExecutionFromAPIGateway 2>/dev/null && echo "✅ Admin login permission imported" || echo "⚠️  Admin login permission import skipped"
+        terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_lambda_permission.submit_cv devops-job-portal-prod-submit-cv/AllowExecutionFromAPIGateway 2>/dev/null && echo "✅ Submit CV permission imported" || echo "⚠️  Submit CV permission import skipped"
+        terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_lambda_permission.list_applications devops-job-portal-prod-list-applications/AllowExecutionFromAPIGateway 2>/dev/null && echo "✅ List applications permission imported" || echo "⚠️  List applications permission import skipped"
+        terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_lambda_permission.get_application devops-job-portal-prod-get-application/AllowExecutionFromAPIGateway 2>/dev/null && echo "✅ Get application permission imported" || echo "⚠️  Get application permission import skipped"
         
         # Import DB subnet group if it exists
         echo "Importing DB subnet group..."
-        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group 2>/dev/null && echo "✅ DB subnet group imported" || echo "⚠️  DB subnet group import skipped"
+        terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group 2>/dev/null && echo "✅ DB subnet group imported" || echo "⚠️  DB subnet group import skipped"
         
         # Import VPC and networking resources
         echo "Importing VPC resources..."
         VPC_ID=$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=devops-job-portal-prod-vpc" --query "Vpcs[0].VpcId" --output text 2>/dev/null)
         if [ "$VPC_ID" != "None" ] && [ "$VPC_ID" != "" ]; then
-          terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" aws_vpc.main $VPC_ID 2>/dev/null && echo "✅ VPC imported" || echo "⚠️  VPC import skipped"
+          terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_vpc.main $VPC_ID 2>/dev/null && echo "✅ VPC imported" || echo "⚠️  VPC import skipped"
         fi
         
         # Import subnets
@@ -243,7 +253,15 @@ jobs:
         PRIVATE_SUBNETS=($(aws ec2 describe-subnets --filters "Name=tag:Name,Values=devops-job-portal-prod-private-*" --query "Subnets[].SubnetId" --output text 2>/dev/null))
         for i in "${!PRIVATE_SUBNETS[@]}"; do
           if [ "${PRIVATE_SUBNETS[$i]}" != "None" ] && [ "${PRIVATE_SUBNETS[$i]}" != "" ]; then
-            terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" "aws_subnet.private[$i]" "${PRIVATE_SUBNETS[$i]}" 2>/dev/null && echo "✅ Private subnet $i imported" || echo "⚠️  Private subnet $i import skipped"
+            terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" "aws_subnet.private[$i]" "${PRIVATE_SUBNETS[$i]}" 2>/dev/null && echo "✅ Private subnet $i imported" || echo "⚠️  Private subnet $i import skipped"
+          fi
+        done
+        
+        # Import public subnets too
+        PUBLIC_SUBNETS=($(aws ec2 describe-subnets --filters "Name=tag:Name,Values=devops-job-portal-prod-public-*" --query "Subnets[].SubnetId" --output text 2>/dev/null))
+        for i in "${!PUBLIC_SUBNETS[@]}"; do
+          if [ "${PUBLIC_SUBNETS[$i]}" != "None" ] && [ "${PUBLIC_SUBNETS[$i]}" != "" ]; then
+            terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" "aws_subnet.public[$i]" "${PUBLIC_SUBNETS[$i]}" 2>/dev/null && echo "✅ Public subnet $i imported" || echo "⚠️  Public subnet $i import skipped"
           fi
         done
         
@@ -251,29 +269,34 @@ jobs:
         echo "Importing security groups..."
         RDS_SG_ID=$(aws ec2 describe-security-groups --filters "Name=tag:Name,Values=devops-job-portal-prod-rds-sg" --query "SecurityGroups[0].GroupId" --output text 2>/dev/null)
         if [ "$RDS_SG_ID" != "None" ] && [ "$RDS_SG_ID" != "" ]; then
-          terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" aws_security_group.rds $RDS_SG_ID 2>/dev/null && echo "✅ RDS security group imported" || echo "⚠️  RDS security group import skipped"
+          terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_security_group.rds $RDS_SG_ID 2>/dev/null && echo "✅ RDS security group imported" || echo "⚠️  RDS security group import skipped"
         fi
         
         LAMBDA_SG_ID=$(aws ec2 describe-security-groups --filters "Name=tag:Name,Values=devops-job-portal-prod-lambda-sg" --query "SecurityGroups[0].GroupId" --output text 2>/dev/null)
         if [ "$LAMBDA_SG_ID" != "None" ] && [ "$LAMBDA_SG_ID" != "" ]; then
-          terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" aws_security_group.lambda $LAMBDA_SG_ID 2>/dev/null && echo "✅ Lambda security group imported" || echo "⚠️  Lambda security group import skipped"
+          terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_security_group.lambda $LAMBDA_SG_ID 2>/dev/null && echo "✅ Lambda security group imported" || echo "⚠️  Lambda security group import skipped"
         fi
         
         # Import RDS instance if it exists
         echo "Importing RDS instance..."
-        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" aws_db_instance.main devops-job-portal-prod-db 2>/dev/null && echo "✅ RDS instance imported" || echo "⚠️  RDS instance import skipped"
+        terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_db_instance.main devops-job-portal-prod-db 2>/dev/null && echo "✅ RDS instance imported" || echo "⚠️  RDS instance import skipped"
         
         # Import S3 buckets
         echo "Importing S3 buckets..."
-        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" aws_s3_bucket.frontend devops-job-portal-prod-frontend 2>/dev/null && echo "✅ Frontend S3 bucket imported" || echo "⚠️  Frontend S3 bucket import skipped"
-        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" aws_s3_bucket.cv_storage devops-job-portal-prod-cv-storage 2>/dev/null && echo "✅ CV storage S3 bucket imported" || echo "⚠️  CV storage S3 bucket import skipped"
+        terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_s3_bucket.frontend devops-job-portal-prod-frontend 2>/dev/null && echo "✅ Frontend S3 bucket imported" || echo "⚠️  Frontend S3 bucket import skipped"
+        terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_s3_bucket.cv_storage devops-job-portal-prod-cv-storage 2>/dev/null && echo "✅ CV storage S3 bucket imported" || echo "⚠️  CV storage S3 bucket import skipped"
         
         # Import API Gateway
         echo "Importing API Gateway..."
         API_ID=$(aws apigateway get-rest-apis --query "items[?name=='devops-job-portal-prod-api'].id" --output text 2>/dev/null)
         if [ "$API_ID" != "None" ] && [ "$API_ID" != "" ]; then
-          terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" aws_api_gateway_rest_api.main $API_ID 2>/dev/null && echo "✅ API Gateway imported" || echo "⚠️  API Gateway import skipped"
+          terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_api_gateway_rest_api.main $API_ID 2>/dev/null && echo "✅ API Gateway imported" || echo "⚠️  API Gateway import skipped"
         fi
+        
+        # Import IAM roles
+        echo "Importing IAM roles..."
+        terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_iam_role.lambda devops-job-portal-prod-lambda-role 2>/dev/null && echo "✅ Lambda IAM role imported" || echo "⚠️  Lambda IAM role import skipped"
+        terraform import -var="environment=prod" -var="db_password=$DB_PASSWORD" aws_iam_role.admin_login_lambda devops-job-portal-prod-admin-login-lambda 2>/dev/null && echo "✅ Admin login IAM role imported" || echo "⚠️  Admin login IAM role import skipped"
         
         echo "✅ Resource import process completed"
       working-directory: ./terraform
@@ -283,8 +306,11 @@ jobs:
       run: |
         echo "🚀 Applying Terraform changes to production..."
         
+        # Set variables for consistency
+        DB_PASSWORD="${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}"
+        
         # Force refresh state to sync with AWS
-        terraform refresh -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" || echo "Refresh completed"
+        terraform refresh -var="environment=prod" -var="db_password=$DB_PASSWORD" || echo "Refresh completed"
         
         # Apply the plan
         terraform apply -auto-approve tfplan || {
@@ -294,7 +320,7 @@ jobs:
           terraform taint aws_db_subnet_group.main 2>/dev/null || echo "Taint skipped"
           
           # Generate new plan and apply
-          terraform plan -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD || 'ChangeMe123!' }}" -out=recovery.tfplan
+          terraform plan -var="environment=prod" -var="db_password=$DB_PASSWORD" -out=recovery.tfplan
           terraform apply -auto-approve recovery.tfplan
         }
         
