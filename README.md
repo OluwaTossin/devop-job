@@ -2,6 +2,8 @@
 
 A secure, scalable job portal application built on AWS with modern web technologies. This project demonstrates best practices in cloud architecture, infrastructure as code, and full-stack development.
 
+**🚀 Production Ready** | **🔒 Enterprise Security** | **📈 Auto-Scaling** | **⚡ Serverless**
+
 ## 🏗️ Architecture Overview
 
 The DevOps Job Portal is built using a modern 3-tier architecture on AWS:

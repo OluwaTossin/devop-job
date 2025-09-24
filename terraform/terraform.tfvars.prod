@@ -1,0 +1,35 @@
+# Production Environment Configuration
+# Copy this file to terraform.tfvars when deploying to production
+
+# AWS Configuration
+aws_region = "eu-west-1"
+
+# Project Configuration
+project_name = "devops-job-portal"
+environment  = "prod"
+
+# Database Configuration for Production
+db_instance_class    = "db.t3.small"    # Upgraded for production
+db_allocated_storage = 50               # Increased storage
+db_backup_retention_period = 7         # 7-day backup retention
+db_multi_az = true                     # Multi-AZ for high availability
+
+# Lambda Configuration for Production
+lambda_memory_size = 512               # Increased memory for better performance
+lambda_timeout     = 60                # Increased timeout
+
+# Additional production settings
+enable_deletion_protection = true      # Prevent accidental deletion
+enable_backup_encryption  = true      # Encrypted backups
+enable_performance_insights = true     # Database performance monitoring
+
+# Tags for Production
+common_tags = {
+  Environment   = "prod"
+  Project      = "devops-job-portal"
+  ManagedBy    = "terraform"
+  Owner        = "DevOps-Team"
+  CostCenter   = "Engineering"
+  Backup       = "required"
+  Monitoring   = "critical"
+}
