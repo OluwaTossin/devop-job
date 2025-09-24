@@ -1,0 +1,213 @@
+name: Deploy to Development
+
+on:
+  push:
+    branches: [ develop ]
+  pull_request:
+    branches: [ develop ]
+
+env:
+  AWS_REGION: eu-west-1
+  TERRAFORM_VERSION: 1.6.0
+
+jobs:
+  terraform-plan:
+    name: Terraform Plan (Development)
+    runs-on: ubuntu-latest
+    environment: development
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+    - name: Terraform Format
+      id: fmt
+      run: terraform fmt -check
+      working-directory: ./terraform
+      continue-on-error: true
+
+    - name: Terraform Init
+      id: init
+      run: |
+        terraform init \
+          -backend-config="bucket=terraform-state-devops-job-portal" \
+          -backend-config="key=dev/terraform.tfstate" \
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="dynamodb_table=terraform-locks"
+      working-directory: ./terraform
+
+    - name: Terraform Workspace
+      id: workspace
+      run: |
+        terraform workspace select dev || terraform workspace new dev
+      working-directory: ./terraform
+
+    - name: Terraform Validate
+      id: validate
+      run: terraform validate -no-color
+      working-directory: ./terraform
+
+    - name: Terraform Plan
+      id: plan
+      run: |
+        terraform plan -no-color -var="environment=dev" -out=tfplan
+      working-directory: ./terraform
+      continue-on-error: true
+
+    - name: Update Pull Request
+      uses: actions/github-script@v7
+      if: github.event_name == 'pull_request'
+      env:
+        PLAN: "terraform\n${{ steps.plan.outputs.stdout }}"
+      with:
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        script: |
+          const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+          #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+          #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+          
+          <details><summary>Show Plan</summary>
+          
+          \`\`\`\n
+          ${process.env.PLAN}
+          \`\`\`
+          
+          </details>
+          
+          *Pushed by: @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output
+          })
+
+    - name: Terraform Plan Status
+      if: steps.plan.outcome == 'failure'
+      run: exit 1
+
+  deploy:
+    name: Deploy to Development
+    needs: terraform-plan
+    runs-on: ubuntu-latest
+    environment: development
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install Python dependencies
+      run: |
+        cd backend
+        pip install -r requirements.txt -t .
+
+    - name: Package Lambda functions
+      run: |
+        cd backend
+        zip -r ../terraform/submit_cv.zip submit_cv.py
+        zip -r ../terraform/list_applications.zip list_applications.py
+        zip -r ../terraform/get_application.zip get_application.py
+
+    - name: Terraform Init
+      run: |
+        terraform init \
+          -backend-config="bucket=terraform-state-devops-job-portal" \
+          -backend-config="key=dev/terraform.tfstate" \
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="dynamodb_table=terraform-locks"
+      working-directory: ./terraform
+
+    - name: Terraform Workspace
+      run: |
+        terraform workspace select dev
+      working-directory: ./terraform
+
+    - name: Terraform Apply
+      run: |
+        terraform apply -auto-approve -var="environment=dev"
+      working-directory: ./terraform
+
+    - name: Get Terraform Outputs
+      id: terraform-output
+      run: |
+        echo "frontend_bucket=$(terraform output -raw frontend_bucket_name)" >> $GITHUB_OUTPUT
+        echo "api_gateway_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+      working-directory: ./terraform
+
+    - name: Update Frontend Configuration
+      run: |
+        sed -i "s|https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/dev|${{ steps.terraform-output.outputs.api_gateway_url }}|g" frontend/js/app.js
+
+    - name: Deploy Frontend to S3
+      run: |
+        aws s3 sync frontend/ s3://${{ steps.terraform-output.outputs.frontend_bucket }} --delete
+        aws s3 cp frontend/index.html s3://${{ steps.terraform-output.outputs.frontend_bucket }}/index.html --cache-control "no-cache"
+
+    - name: Invalidate CloudFront (if exists)
+      run: |
+        echo "CloudFront invalidation would go here if CDN is configured"
+      continue-on-error: true
+
+  test:
+    name: Run Tests
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install test dependencies
+      run: |
+        pip install pytest requests
+
+    - name: Run basic health check
+      run: |
+        echo "Basic health checks would run here"
+        echo "API endpoint tests"
+        echo "Frontend accessibility tests"
+
+    - name: Notify deployment success
+      if: success()
+      run: |
+        echo "✅ Development deployment successful!"
+        echo "Frontend URL: http://${{ needs.deploy.outputs.frontend_bucket }}.s3-website-${{ env.AWS_REGION }}.amazonaws.com"
+        echo "API URL: ${{ needs.deploy.outputs.api_gateway_url }}"

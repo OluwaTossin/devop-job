@@ -1,0 +1,16 @@
+# Example terraform.tfvars file
+# Copy this to terraform.tfvars and customize the values
+
+# AWS Configuration
+aws_region = "eu-west-1"
+
+# Project Configuration
+project_name = "devops-job-portal"
+environment  = "dev"  # Change to "prod" for production
+
+# Database Configuration
+db_username = "dbadmin"
+db_password = "YourSecurePassword123!"  # Please change this!
+
+# CORS Configuration
+allowed_origins = ["*"]  # In production, specify your domain

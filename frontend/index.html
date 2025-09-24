@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevOps Engineer Job Portal</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-cloud"></i> DevOps Engineer Job Portal</h1>
+            <p class="subtitle">Join our dynamic team - Remote opportunity available</p>
+        </header>
+
+        <nav class="nav-tabs">
+            <button class="tab-button active" onclick="showTab('job-info')">
+                <i class="fas fa-info-circle"></i> Job Information
+            </button>
+            <button class="tab-button" onclick="showTab('application')">
+                <i class="fas fa-file-upload"></i> Apply Now
+            </button>
+            <button class="tab-button" onclick="showTab('admin')">
+                <i class="fas fa-users-cog"></i> Admin Portal
+            </button>
+        </nav>
+
+        <!-- Job Information Tab -->
+        <div id="job-info" class="tab-content active">
+            <section class="job-section">
+                <h2><i class="fas fa-briefcase"></i> Mid-Level DevOps Engineer - Remote</h2>
+                
+                <div class="job-highlights">
+                    <div class="highlight-card">
+                        <i class="fas fa-home"></i>
+                        <h3>100% Remote</h3>
+                        <p>Work from anywhere</p>
+                    </div>
+                    <div class="highlight-card">
+                        <i class="fas fa-cloud-upload-alt"></i>
+                        <h3>AWS Cloud</h3>
+                        <p>Latest cloud technologies</p>
+                    </div>
+                    <div class="highlight-card">
+                        <i class="fas fa-tools"></i>
+                        <h3>Modern Stack</h3>
+                        <p>Terraform, Docker, K8s</p>
+                    </div>
+                </div>
+
+                <div class="job-details">
+                    <div class="detail-section">
+                        <h3><i class="fas fa-tasks"></i> Key Responsibilities</h3>
+                        <ul>
+                            <li>Design and implement AWS cloud infrastructure using Terraform</li>
+                            <li>Maintain and optimize CI/CD pipelines using GitHub Actions</li>
+                            <li>Manage containerized applications and serverless architectures</li>
+                            <li>Implement monitoring, logging, and alerting solutions</li>
+                            <li>Collaborate with development teams for smooth deployments</li>
+                            <li>Maintain security best practices across all environments</li>
+                        </ul>
+                    </div>
+
+                    <div class="detail-section">
+                        <h3><i class="fas fa-cogs"></i> Required Skills</h3>
+                        <div class="skills-grid">
+                            <div class="skill-category">
+                                <h4>Cloud Platforms</h4>
+                                <ul>
+                                    <li>AWS (S3, Lambda, RDS, API Gateway)</li>
+                                    <li>CloudWatch monitoring</li>
+                                </ul>
+                            </div>
+                            <div class="skill-category">
+                                <h4>Infrastructure as Code</h4>
+                                <ul>
+                                    <li>Terraform</li>
+                                    <li>CloudFormation</li>
+                                </ul>
+                            </div>
+                            <div class="skill-category">
+                                <h4>CI/CD</h4>
+                                <ul>
+                                    <li>GitHub Actions</li>
+                                    <li>Automated testing</li>
+                                </ul>
+                            </div>
+                            <div class="skill-category">
+                                <h4>Programming</h4>
+                                <ul>
+                                    <li>Python</li>
+                                    <li>JavaScript</li>
+                                    <li>Bash scripting</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="detail-section">
+                        <h3><i class="fas fa-star"></i> What We Offer</h3>
+                        <ul>
+                            <li>Competitive salary and benefits</li>
+                            <li>Fully remote work environment</li>
+                            <li>Professional development opportunities</li>
+                            <li>Flexible working hours</li>
+                            <li>Access to latest tools and technologies</li>
+                            <li>Collaborative and innovative team culture</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Application Tab -->
+        <div id="application" class="tab-content">
+            <section class="application-section">
+                <h2><i class="fas fa-file-upload"></i> Submit Your Application</h2>
+                
+                <form id="applicationForm" class="application-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="firstName">
+                                <i class="fas fa-user"></i> First Name *
+                            </label>
+                            <input type="text" id="firstName" name="firstName" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="lastName">
+                                <i class="fas fa-user"></i> Last Name *
+                            </label>
+                            <input type="text" id="lastName" name="lastName" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="email">
+                                <i class="fas fa-envelope"></i> Email Address *
+                            </label>
+                            <input type="email" id="email" name="email" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="phone">
+                                <i class="fas fa-phone"></i> Phone Number
+                            </label>
+                            <input type="tel" id="phone" name="phone">
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="experience">
+                                <i class="fas fa-briefcase"></i> Years of Experience *
+                            </label>
+                            <select id="experience" name="experience" required>
+                                <option value="">Select experience</option>
+                                <option value="1-2">1-2 years</option>
+                                <option value="3-5">3-5 years</option>
+                                <option value="6-8">6-8 years</option>
+                                <option value="9+">9+ years</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="location">
+                                <i class="fas fa-map-marker-alt"></i> Current Location
+                            </label>
+                            <input type="text" id="location" name="location" placeholder="City, Country">
+                        </div>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label for="skills">
+                            <i class="fas fa-code"></i> Key Skills (comma-separated) *
+                        </label>
+                        <textarea id="skills" name="skills" rows="3" required 
+                                  placeholder="e.g., AWS, Terraform, Docker, Kubernetes, Python, CI/CD"></textarea>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label for="coverLetter">
+                            <i class="fas fa-file-alt"></i> Cover Letter
+                        </label>
+                        <textarea id="coverLetter" name="coverLetter" rows="6" 
+                                  placeholder="Tell us why you're interested in this position and what makes you a great fit..."></textarea>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label for="cv" class="file-label">
+                            <i class="fas fa-upload"></i> Upload CV/Resume * (PDF, DOC, DOCX - Max 5MB)
+                        </label>
+                        <input type="file" id="cv" name="cv" accept=".pdf,.doc,.docx" required>
+                        <div class="file-info" id="fileInfo"></div>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="terms" name="terms" required>
+                            <span class="checkmark"></span>
+                            I agree to the processing of my personal data for recruitment purposes
+                        </label>
+                    </div>
+
+                    <button type="submit" class="submit-btn">
+                        <i class="fas fa-paper-plane"></i> Submit Application
+                    </button>
+                </form>
+
+                <div id="loadingSpinner" class="loading-spinner" style="display: none;">
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <p>Submitting your application...</p>
+                </div>
+
+                <div id="successMessage" class="message success" style="display: none;">
+                    <i class="fas fa-check-circle"></i>
+                    <h3>Application Submitted Successfully!</h3>
+                    <p>Thank you for your interest. We'll review your application and get back to you soon.</p>
+                </div>
+
+                <div id="errorMessage" class="message error" style="display: none;">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <h3>Submission Failed</h3>
+                    <p id="errorText">Please try again or contact support.</p>
+                </div>
+            </section>
+        </div>
+
+        <!-- Admin Tab -->
+        <div id="admin" class="tab-content">
+            <section class="admin-section">
+                <div class="admin-header">
+                    <h2><i class="fas fa-users-cog"></i> Admin Portal</h2>
+                </div>
+                
+                <!-- Login Prompt (shown when not authenticated) -->
+                <div class="login-prompt">
+                    <div class="login-message">
+                        <i class="fas fa-lock"></i>
+                        <h3>Authentication Required</h3>
+                        <p>Please log in to access the admin portal and view submitted applications.</p>
+                        <button class="btn btn-primary" onclick="showAdminLogin()">
+                            <i class="fas fa-sign-in-alt"></i> Admin Login
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Admin Content (shown when authenticated) -->
+                <div class="admin-content" style="display: none;">
+                    <div class="admin-controls">
+                        <button id="refreshApplications" class="btn-secondary">
+                            <i class="fas fa-sync-alt"></i> Refresh List
+                        </button>
+                    </div>
+
+                    <div class="applications-container">
+                        <div class="applications-header">
+                            <h3>Submitted Applications</h3>
+                            <span id="applicationsCount" class="count-badge">0</span>
+                        </div>
+                        
+                        <div id="applicationsLoading" class="loading-spinner">
+                            <i class="fas fa-spinner fa-spin"></i>
+                            <p>Loading applications...</p>
+                        </div>
+
+                        <div id="applicationsList" class="applications-list">
+                            <!-- Applications will be loaded here -->
+                        </div>
+
+                        <div id="noApplications" class="no-data" style="display: none;">
+                            <i class="fas fa-inbox"></i>
+                            <p>No applications submitted yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <p>&copy; 2025 DevOps Job Portal. Built with ❤️ using AWS, Terraform, and modern web technologies.</p>
+        <p>
+            <a href="https://github.com/your-repo" target="_blank">
+                <i class="fab fa-github"></i> View Source
+            </a>
+        </p>
+    </footer>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

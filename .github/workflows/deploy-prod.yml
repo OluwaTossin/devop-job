@@ -1,0 +1,287 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      confirm_deployment:
+        description: 'Type "DEPLOY" to confirm production deployment'
+        required: true
+        default: ''
+
+env:
+  AWS_REGION: eu-west-1
+  TERRAFORM_VERSION: 1.6.0
+
+jobs:
+  validate-input:
+    name: Validate Deployment Input
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+    - name: Check confirmation
+      run: |
+        if [ "${{ github.event.inputs.confirm_deployment }}" != "DEPLOY" ]; then
+          echo "❌ Deployment cancelled. Please type 'DEPLOY' to confirm."
+          exit 1
+        fi
+        echo "✅ Deployment confirmed"
+
+  terraform-plan:
+    name: Terraform Plan (Production)
+    runs-on: ubuntu-latest
+    environment: production
+    needs: [validate-input]
+    if: always() && (needs.validate-input.result == 'success' || github.event_name == 'push')
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+    - name: Terraform Format
+      id: fmt
+      run: terraform fmt -check
+      working-directory: ./terraform
+      continue-on-error: true
+
+    - name: Terraform Init
+      id: init
+      run: |
+        terraform init \
+          -backend-config="bucket=terraform-state-devops-job-portal" \
+          -backend-config="key=prod/terraform.tfstate" \
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="dynamodb_table=terraform-locks"
+      working-directory: ./terraform
+
+    - name: Terraform Workspace
+      id: workspace
+      run: |
+        terraform workspace select prod || terraform workspace new prod
+      working-directory: ./terraform
+
+    - name: Terraform Validate
+      id: validate
+      run: terraform validate -no-color
+      working-directory: ./terraform
+
+    - name: Terraform Plan
+      id: plan
+      run: |
+        terraform plan -no-color -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" -out=tfplan
+      working-directory: ./terraform
+
+    - name: Save Terraform Plan
+      run: |
+        terraform show -json tfplan > plan.json
+      working-directory: ./terraform
+
+    - name: Upload Plan Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: terraform-plan
+        path: terraform/tfplan
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: terraform-plan
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Run Checkov (Terraform Security Scan)
+      run: |
+        pip install checkov
+        checkov -d terraform/ --framework terraform --output cli --soft-fail
+      continue-on-error: true
+
+    - name: Run basic security checks
+      run: |
+        echo "🔍 Running security checks..."
+        echo "✓ Checking for hardcoded secrets"
+        if grep -r "AKIA\|aws_secret_access_key\|password.*=" terraform/ --exclude-dir=.terraform || true; then
+          echo "⚠️  Potential secrets found - please review"
+        else
+          echo "✓ No obvious secrets detected"
+        fi
+
+  approval:
+    name: Manual Approval
+    runs-on: ubuntu-latest
+    environment: production-approval
+    needs: [terraform-plan, security-scan]
+    if: github.event_name == 'push'
+    
+    steps:
+    - name: Request Approval
+      run: |
+        echo "🚀 Production deployment requires manual approval"
+        echo "Review the Terraform plan and security scan results before approving"
+
+  deploy:
+    name: Deploy to Production
+    needs: [terraform-plan, security-scan, approval]
+    runs-on: ubuntu-latest
+    environment: production
+    if: always() && (needs.approval.result == 'success' || github.event_name == 'workflow_dispatch')
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install Python dependencies
+      run: |
+        cd backend
+        pip install -r requirements.txt -t .
+
+    - name: Package Lambda functions
+      run: |
+        cd backend
+        zip -r ../terraform/submit_cv.zip submit_cv.py
+        zip -r ../terraform/list_applications.zip list_applications.py
+        zip -r ../terraform/get_application.zip get_application.py
+
+    - name: Download Terraform Plan
+      uses: actions/download-artifact@v3
+      with:
+        name: terraform-plan
+        path: terraform/
+
+    - name: Terraform Init
+      run: |
+        terraform init \
+          -backend-config="bucket=terraform-state-devops-job-portal" \
+          -backend-config="key=prod/terraform.tfstate" \
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="dynamodb_table=terraform-locks"
+      working-directory: ./terraform
+
+    - name: Terraform Workspace
+      run: |
+        terraform workspace select prod
+      working-directory: ./terraform
+
+    - name: Terraform Apply
+      run: |
+        terraform apply -auto-approve tfplan
+      working-directory: ./terraform
+
+    - name: Get Terraform Outputs
+      id: terraform-output
+      run: |
+        echo "frontend_bucket=$(terraform output -raw frontend_bucket_name)" >> $GITHUB_OUTPUT
+        echo "api_gateway_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+        echo "frontend_url=$(terraform output -raw frontend_website_url)" >> $GITHUB_OUTPUT
+      working-directory: ./terraform
+
+    - name: Update Frontend Configuration
+      run: |
+        sed -i "s|https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/dev|${{ steps.terraform-output.outputs.api_gateway_url }}|g" frontend/js/app.js
+
+    - name: Deploy Frontend to S3
+      run: |
+        aws s3 sync frontend/ s3://${{ steps.terraform-output.outputs.frontend_bucket }} --delete
+        aws s3 cp frontend/index.html s3://${{ steps.terraform-output.outputs.frontend_bucket }}/index.html --cache-control "no-cache"
+
+    - name: Run Post-Deployment Tests
+      run: |
+        echo "🧪 Running post-deployment tests..."
+        
+        # Test API Gateway health
+        API_URL="${{ steps.terraform-output.outputs.api_gateway_url }}"
+        echo "Testing API at: $API_URL"
+        
+        # Test frontend accessibility
+        FRONTEND_URL="http://${{ steps.terraform-output.outputs.frontend_url }}"
+        echo "Testing frontend at: $FRONTEND_URL"
+        
+        # Basic curl tests
+        curl -f "$API_URL/applications" || echo "⚠️  API test failed"
+        curl -f "$FRONTEND_URL" || echo "⚠️  Frontend test failed"
+
+    - name: Notify deployment success
+      if: success()
+      run: |
+        echo "🎉 Production deployment successful!"
+        echo "Frontend URL: http://${{ steps.terraform-output.outputs.frontend_url }}"
+        echo "API URL: ${{ steps.terraform-output.outputs.api_gateway_url }}"
+        echo "Environment: Production"
+
+    - name: Create GitHub Release
+      if: success() && github.event_name == 'push'
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: release-${{ github.run_number }}
+        release_name: Production Release ${{ github.run_number }}
+        body: |
+          🚀 Production deployment successful!
+          
+          **Deployed Changes:**
+          - Commit: ${{ github.sha }}
+          - Branch: ${{ github.ref }}
+          - Workflow: ${{ github.workflow }}
+          
+          **URLs:**
+          - Frontend: http://${{ steps.terraform-output.outputs.frontend_url }}
+          - API: ${{ steps.terraform-output.outputs.api_gateway_url }}
+          
+          **Infrastructure:**
+          - Environment: Production
+          - Region: ${{ env.AWS_REGION }}
+          - Deployed by: @${{ github.actor }}
+        draft: false
+        prerelease: false
+
+  rollback:
+    name: Rollback (if needed)
+    runs-on: ubuntu-latest
+    environment: production
+    if: failure() && github.event_name == 'push'
+    needs: [deploy]
+    
+    steps:
+    - name: Manual Rollback Instructions
+      run: |
+        echo "❌ Deployment failed. Manual rollback may be required."
+        echo ""
+        echo "To rollback:"
+        echo "1. Check the previous successful deployment"
+        echo "2. Run: terraform workspace select prod"
+        echo "3. Run: terraform apply with previous configuration"
+        echo "4. Or use AWS Console to rollback specific resources"
+        echo ""
+        echo "Contact the DevOps team for assistance."

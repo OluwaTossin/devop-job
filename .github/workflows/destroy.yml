@@ -1,0 +1,87 @@
+name: Terraform Destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to destroy (dev/prod)'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+        - dev
+        - prod
+      confirm_destroy:
+        description: 'Type "DESTROY" to confirm infrastructure destruction'
+        required: true
+        default: ''
+
+env:
+  AWS_REGION: eu-west-1
+  TERRAFORM_VERSION: 1.6.0
+
+jobs:
+  validate-input:
+    name: Validate Destroy Input
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check confirmation
+      run: |
+        if [ "${{ github.event.inputs.confirm_destroy }}" != "DESTROY" ]; then
+          echo "❌ Destruction cancelled. Please type 'DESTROY' to confirm."
+          exit 1
+        fi
+        echo "✅ Destruction confirmed for environment: ${{ github.event.inputs.environment }}"
+
+  destroy:
+    name: Destroy Infrastructure
+    needs: validate-input
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment == 'prod' && 'production' || 'development' }}
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+    - name: Terraform Init
+      run: |
+        terraform init \
+          -backend-config="bucket=terraform-state-devops-job-portal" \
+          -backend-config="key=${{ github.event.inputs.environment }}/terraform.tfstate" \
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="dynamodb_table=terraform-locks"
+      working-directory: ./terraform
+
+    - name: Terraform Workspace
+      run: |
+        terraform workspace select ${{ github.event.inputs.environment }}
+      working-directory: ./terraform
+
+    - name: Terraform Plan Destroy
+      run: |
+        terraform plan -destroy -var="environment=${{ github.event.inputs.environment }}" -out=destroy.tfplan
+      working-directory: ./terraform
+
+    - name: Terraform Destroy
+      run: |
+        terraform apply -auto-approve destroy.tfplan
+      working-directory: ./terraform
+
+    - name: Notify destruction complete
+      if: success()
+      run: |
+        echo "💥 Infrastructure destroyed successfully!"
+        echo "Environment: ${{ github.event.inputs.environment }}"
+        echo "Destroyed by: @${{ github.actor }}"
