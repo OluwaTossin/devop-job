@@ -62,7 +62,7 @@ jobs:
       run: |
         terraform init \
           -backend-config="bucket=terraform-state-devops-job-portal" \
-          -backend-config="key=prod/terraform.tfstate" \
+          -backend-config="key=terraform.tfstate" \
           -backend-config="region=${{ env.AWS_REGION }}" \
           -backend-config="dynamodb_table=terraform-locks"
       working-directory: ./terraform
@@ -103,12 +103,29 @@ jobs:
     - name: Terraform Plan
       id: plan
       run: |
+        echo "🚀 Running Terraform plan for production environment..."
         terraform plan -no-color -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" -out=tfplan
+        PLAN_EXIT_CODE=$?
+        echo "Terraform plan exit code: $PLAN_EXIT_CODE"
+        if [ $PLAN_EXIT_CODE -ne 0 ]; then
+          echo "❌ Terraform plan failed with exit code $PLAN_EXIT_CODE"
+          exit $PLAN_EXIT_CODE
+        fi
+        echo "✅ Terraform plan completed successfully"
       working-directory: ./terraform
+      continue-on-error: false
 
     - name: Save Terraform Plan
       run: |
-        terraform show -json tfplan > plan.json
+        echo "Saving Terraform plan output..."
+        if [ -f "tfplan" ]; then
+          terraform show -json tfplan > plan.json || echo "Warning: Could not save plan as JSON"
+          echo "Plan file size: $(ls -lh tfplan)"
+          echo "✅ Terraform plan saved successfully"
+        else
+          echo "❌ Plan file not found"
+          exit 1
+        fi
       working-directory: ./terraform
 
     - name: Upload Plan Artifact
