@@ -8,11 +8,11 @@ aws_region = "eu-west-1"
 project_name = "devops-job-portal"
 environment  = "prod"
 
-# Database Configuration for Production
-db_instance_class    = "db.t3.small"    # Upgraded for production
-db_allocated_storage = 50               # Increased storage
-db_backup_retention_period = 7         # 7-day backup retention
-db_multi_az = true                     # Multi-AZ for high availability
+# Database Configuration for Production (Free Tier Compatible)
+db_instance_class    = "db.t3.micro"    # Free tier compatible
+db_allocated_storage = 20               # Free tier limit
+db_backup_retention_period = 7         # 7-day backup retention  
+db_multi_az = false                    # Multi-AZ not available in free tier
 
 # Lambda Configuration for Production
 lambda_memory_size = 512               # Increased memory for better performance

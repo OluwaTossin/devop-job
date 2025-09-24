@@ -114,8 +114,8 @@ resource "aws_lambda_function" "submit_cv" {
   handler         = "submit_cv.lambda_handler"
   source_code_hash = filebase64sha256(local.lambda_packages.submit_cv)
   runtime         = "python3.9"
-  timeout         = 30
-  memory_size     = 256
+  timeout         = var.lambda_timeout
+  memory_size     = var.lambda_memory_size
 
   vpc_config {
     subnet_ids         = aws_subnet.private[*].id
@@ -149,8 +149,8 @@ resource "aws_lambda_function" "list_applications" {
   handler         = "list_applications.lambda_handler"
   source_code_hash = filebase64sha256(local.lambda_packages.list_applications)
   runtime         = "python3.9"
-  timeout         = 30
-  memory_size     = 256
+  timeout         = var.lambda_timeout
+  memory_size     = var.lambda_memory_size
 
   vpc_config {
     subnet_ids         = aws_subnet.private[*].id
@@ -183,8 +183,8 @@ resource "aws_lambda_function" "get_application" {
   handler         = "get_application.lambda_handler"
   source_code_hash = filebase64sha256(local.lambda_packages.get_application)
   runtime         = "python3.9"
-  timeout         = 30
-  memory_size     = 256
+  timeout         = var.lambda_timeout
+  memory_size     = var.lambda_memory_size
 
   vpc_config {
     subnet_ids         = aws_subnet.private[*].id

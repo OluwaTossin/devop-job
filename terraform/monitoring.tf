@@ -129,36 +129,6 @@ resource "aws_sns_topic" "alerts" {
   tags = local.common_tags
 }
 
-# Auto Scaling for Lambda (Provisioned Concurrency)
-resource "aws_lambda_provisioned_concurrency_config" "submit_cv" {
-  count                             = var.environment == "prod" ? 1 : 0
-  function_name                     = aws_lambda_function.submit_cv.function_name
-  provisioned_concurrent_executions = 2
-  qualifier                         = aws_lambda_function.submit_cv.version
-}
-
-# Lambda function aliases for better versioning
-resource "aws_lambda_alias" "submit_cv" {
-  name             = var.environment
-  description      = "${var.environment} environment alias"
-  function_name    = aws_lambda_function.submit_cv.function_name
-  function_version = aws_lambda_function.submit_cv.version
-}
-
-resource "aws_lambda_alias" "list_applications" {
-  name             = var.environment
-  description      = "${var.environment} environment alias"
-  function_name    = aws_lambda_function.list_applications.function_name
-  function_version = aws_lambda_function.list_applications.version
-}
-
-resource "aws_lambda_alias" "get_application" {
-  name             = var.environment
-  description      = "${var.environment} environment alias"
-  function_name    = aws_lambda_function.get_application.function_name
-  function_version = aws_lambda_function.get_application.version
-}
-
 # CloudWatch Dashboard
 resource "aws_cloudwatch_dashboard" "main" {
   dashboard_name = "${local.name_prefix}-dashboard"

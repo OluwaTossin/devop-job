@@ -59,11 +59,11 @@ resource "aws_db_instance" "main" {
   # Database configuration
   engine         = "postgres"
   engine_version = "14.19"
-  instance_class = var.environment == "prod" ? "db.t3.micro" : "db.t3.micro"
+  instance_class = var.db_instance_class
 
   # Storage configuration
-  allocated_storage     = 20
-  max_allocated_storage = 100
+  allocated_storage     = var.db_allocated_storage
+  max_allocated_storage = var.db_allocated_storage * 2
   storage_type          = "gp2"
   storage_encrypted     = true
 
@@ -77,9 +77,10 @@ resource "aws_db_instance" "main" {
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
   port                   = 5432
+  multi_az              = var.db_multi_az
 
   # Backup configuration
-  backup_retention_period = var.environment == "prod" ? 7 : 1
+  backup_retention_period = var.db_backup_retention_period
   backup_window          = "03:00-04:00"
   maintenance_window     = "sun:04:00-sun:05:00"
 
@@ -89,13 +90,14 @@ resource "aws_db_instance" "main" {
   # Monitoring
   monitoring_interval = 60
   monitoring_role_arn = aws_iam_role.rds_monitoring.arn
+  performance_insights_enabled = var.enable_performance_insights
 
   # Additional settings
   auto_minor_version_upgrade = true
   copy_tags_to_snapshot     = true
-  deletion_protection       = var.environment == "prod" ? true : false
-  skip_final_snapshot       = var.environment != "prod"
-  final_snapshot_identifier = var.environment == "prod" ? "${local.name_prefix}-final-snapshot" : null
+  deletion_protection       = var.enable_deletion_protection
+  skip_final_snapshot       = !var.enable_deletion_protection
+  final_snapshot_identifier = var.enable_deletion_protection ? "${local.name_prefix}-final-snapshot" : null
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-database"

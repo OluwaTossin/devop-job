@@ -74,7 +74,7 @@ resource "aws_iam_role_policy" "admin_login_lambda" {
 # CloudWatch Log Group for admin login Lambda
 resource "aws_cloudwatch_log_group" "admin_login" {
   name              = "/aws/lambda/${local.name_prefix}-admin-login"
-  retention_in_days = var.environment == "prod" ? 14 : 7
+  retention_in_days = var.db_backup_retention_period * 2  # Double the backup retention for logs
 
   tags = local.common_tags
 }
@@ -87,8 +87,8 @@ resource "aws_lambda_function" "admin_login" {
   handler         = "admin_login.lambda_handler"
   source_code_hash = filebase64sha256(local.lambda_packages.admin_login)
   runtime         = "python3.9"
-  timeout         = 30
-  memory_size     = 256
+  timeout         = var.lambda_timeout
+  memory_size     = var.lambda_memory_size
 
   environment {
     variables = {

@@ -59,13 +59,77 @@ variable "admin_username" {
   sensitive   = true
 }
 
+# Database Configuration Variables
+variable "db_instance_class" {
+  description = "RDS instance class"
+  type        = string
+  default     = "db.t3.micro"
+}
+
+variable "db_allocated_storage" {
+  description = "RDS allocated storage in GB"
+  type        = number
+  default     = 20
+}
+
+variable "db_backup_retention_period" {
+  description = "RDS backup retention period in days"
+  type        = number
+  default     = 1
+}
+
+variable "db_multi_az" {
+  description = "Enable Multi-AZ deployment for RDS"
+  type        = bool
+  default     = false
+}
+
+# Lambda Configuration Variables
+variable "lambda_memory_size" {
+  description = "Lambda function memory size in MB"
+  type        = number
+  default     = 128
+}
+
+variable "lambda_timeout" {
+  description = "Lambda function timeout in seconds"
+  type        = number
+  default     = 30
+}
+
+# Additional Production Settings
+variable "enable_deletion_protection" {
+  description = "Enable deletion protection for RDS"
+  type        = bool
+  default     = false
+}
+
+variable "enable_backup_encryption" {
+  description = "Enable backup encryption for RDS"
+  type        = bool
+  default     = false
+}
+
+variable "enable_performance_insights" {
+  description = "Enable Performance Insights for RDS"
+  type        = bool
+  default     = false
+}
+
+# Common Tags Override
+variable "common_tags" {
+  description = "Common tags to apply to all resources"
+  type        = map(string)
+  default     = {}
+}
+
 # Local values for consistent naming
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
   
-  common_tags = {
+  common_tags = merge({
     Project     = var.project_name
     Environment = var.environment
     ManagedBy   = "Terraform"
-  }
+  }, var.common_tags)
 }

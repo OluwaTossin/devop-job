@@ -11,8 +11,8 @@
  * @date September 2025
  */
 
-// API Configuration - Updated via Terraform deployment
-const API_BASE_URL = 'https://8dzyqddbz5.execute-api.eu-west-1.amazonaws.com/dev';
+// API Configuration - Production Environment
+const API_BASE_URL = 'https://szjg0kym4f.execute-api.eu-west-1.amazonaws.com/prod';
 
 // Global application state
 let applications = [];

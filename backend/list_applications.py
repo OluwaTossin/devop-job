@@ -28,6 +28,66 @@ DB_NAME = os.environ['DB_NAME']
 DB_USER = os.environ['DB_USER']
 DB_PASSWORD = os.environ['DB_PASSWORD']
 
+def initialize_database_tables():
+    """Initialize database tables if they don't exist"""
+    try:
+        conn = psycopg2.connect(
+            host=DB_HOST,
+            port=DB_PORT,
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD
+        )
+        
+        cursor = conn.cursor()
+        
+        # Create applications table
+        create_table_query = """
+        CREATE TABLE IF NOT EXISTS applications (
+            id SERIAL PRIMARY KEY,
+            first_name VARCHAR(255),
+            last_name VARCHAR(255),
+            name VARCHAR(255),
+            email VARCHAR(255) NOT NULL,
+            phone VARCHAR(50),
+            experience VARCHAR(50) NOT NULL,
+            location VARCHAR(255),
+            skills TEXT,
+            cover_letter TEXT,
+            cv_file_path VARCHAR(500),
+            cv_file_name VARCHAR(255),
+            cv_file_type VARCHAR(100),
+            cv_key VARCHAR(500) NOT NULL,
+            submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+        
+        cursor.execute(create_table_query)
+        
+        # Create indexes for better performance
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_applications_email 
+        ON applications(email);
+        """)
+        
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_applications_submitted_at 
+        ON applications(submitted_at);
+        """)
+        
+        conn.commit()
+        logger.info("Database tables initialized successfully")
+        
+        cursor.close()
+        conn.close()
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error initializing database tables: {str(e)}")
+        return False
+
 # Standard CORS headers for all responses
 CORS_HEADERS = {
     'Content-Type': 'application/json',
@@ -83,6 +143,28 @@ def lambda_handler(event, context):
         dict: HTTP response object with applications list and metadata
     """
     try:
+        # Check if this is a database initialization request
+        if event.get('init_database', False):
+            logger.info("Database initialization requested")
+            if initialize_database_tables():
+                return {
+                    'statusCode': 200,
+                    'headers': CORS_HEADERS,
+                    'body': json.dumps({
+                        'message': 'Database initialized successfully!',
+                        'success': True
+                    })
+                }
+            else:
+                return {
+                    'statusCode': 500,
+                    'headers': CORS_HEADERS,
+                    'body': json.dumps({
+                        'message': 'Database initialization failed',
+                        'success': False
+                    })
+                }
+        
         logger.info("Fetching applications list")
         
         # Get query parameters
@@ -220,18 +302,32 @@ def lambda_handler(event, context):
         }
         
     except psycopg2.Error as db_error:
-        logger.error(f"Database error: {str(db_error)}")
+        error_message = str(db_error)
+        logger.error(f"Database error: {error_message}")
+        
+        # If table doesn't exist, try to initialize it
+        if "relation \"applications\" does not exist" in error_message:
+            logger.info("Applications table doesn't exist. Attempting to initialize...")
+            if initialize_database_tables():
+                logger.info("Database initialized successfully. Retrying operation...")
+                # Retry the operation by calling the handler again
+                return lambda_handler(event, context)
+            else:
+                return {
+                    'statusCode': 500,
+                    'headers': CORS_HEADERS,
+                    'body': json.dumps({
+                        'message': 'Database initialization failed',
+                        'error': error_message
+                    })
+                }
+        
         return {
             'statusCode': 500,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token',
-                'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
-            },
+            'headers': CORS_HEADERS,
             'body': json.dumps({
                 'message': 'Database error occurred',
-                'error': str(db_error)
+                'error': error_message
             })
         }
         
