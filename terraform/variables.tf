@@ -25,7 +25,7 @@ variable "environment" {
   description = "Environment name (dev, staging, prod)"
   type        = string
   default     = "prod"
-  
+
   validation {
     condition     = contains(["dev", "staging", "prod"], var.environment)
     error_message = "Environment must be one of: dev, staging, prod."
@@ -126,7 +126,7 @@ variable "common_tags" {
 # Local values for consistent naming
 locals {
   name_prefix = "${var.project_name}-${var.environment}"
-  
+
   common_tags = merge({
     Project     = var.project_name
     Environment = var.environment

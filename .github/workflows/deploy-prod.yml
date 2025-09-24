@@ -83,15 +83,6 @@ jobs:
         terraform workspace select prod || terraform workspace new prod
       working-directory: ./terraform
 
-    - name: Terraform Refresh State
-      run: |
-        echo "🔄 Refreshing Terraform state to sync with actual infrastructure..."
-        # Try to refresh the state to sync with existing resources
-        terraform refresh -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" || echo "Refresh completed with warnings (expected for first run)"
-        echo "✅ State refresh completed"
-      working-directory: ./terraform
-      continue-on-error: true
-
     - name: Setup Python
       uses: actions/setup-python@v4
       with:
@@ -109,6 +100,15 @@ jobs:
         zip -r ../terraform/list_applications.zip list_applications.py
         zip -r ../terraform/get_application.zip get_application.py
         zip -r ../terraform/admin_login.zip admin_login.py
+
+    - name: Terraform Refresh State
+      run: |
+        echo "🔄 Refreshing Terraform state to sync with actual infrastructure..."
+        # Try to refresh the state to sync with existing resources
+        terraform refresh -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" || echo "Refresh completed with warnings (expected for first run)"
+        echo "✅ State refresh completed"
+      working-directory: ./terraform
+      continue-on-error: true
 
     - name: Terraform Validate
       id: validate
@@ -161,6 +161,7 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     needs: terraform-plan
+    if: always() && needs.terraform-plan.result != 'cancelled'
     
     steps:
     - name: Checkout
@@ -187,7 +188,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production-approval
     needs: [terraform-plan, security-scan]
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && always() && needs.terraform-plan.result != 'cancelled' && needs.security-scan.result != 'cancelled'
     
     steps:
     - name: Request Approval
@@ -200,7 +201,7 @@ jobs:
     needs: [terraform-plan, security-scan, approval]
     runs-on: ubuntu-latest
     environment: production
-    if: always() && (needs.approval.result == 'success' || github.event_name == 'workflow_dispatch')
+    if: always() && (needs.approval.result == 'success' || github.event_name == 'workflow_dispatch') && needs.terraform-plan.result != 'cancelled'
     
     steps:
     - name: Checkout

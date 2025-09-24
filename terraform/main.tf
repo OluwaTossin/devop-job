@@ -21,7 +21,7 @@ terraform {
       version = "~> 3.1"
     }
   }
-  
+
   # S3 backend for storing Terraform state
   backend "s3" {
     bucket         = "terraform-state-devops-job-portal"
@@ -35,7 +35,7 @@ terraform {
 # Configure the AWS Provider
 provider "aws" {
   region = var.aws_region
-  
+
   default_tags {
     tags = {
       Project     = var.project_name

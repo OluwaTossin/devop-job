@@ -29,7 +29,7 @@ resource "aws_cloudwatch_metric_alarm" "lambda_submit_cv_duration" {
   namespace           = "AWS/Lambda"
   period              = "300"
   statistic           = "Average"
-  threshold           = "25000"  # 25 seconds
+  threshold           = "25000" # 25 seconds
   alarm_description   = "This metric monitors submit cv lambda duration"
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
@@ -94,8 +94,8 @@ resource "aws_cloudwatch_metric_alarm" "api_gateway_4xx" {
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {
-    ApiName   = aws_api_gateway_rest_api.main.name
-    Stage     = aws_api_gateway_stage.main.stage_name
+    ApiName = aws_api_gateway_rest_api.main.name
+    Stage   = aws_api_gateway_stage.main.stage_name
   }
 
   tags = local.common_tags
@@ -115,8 +115,8 @@ resource "aws_cloudwatch_metric_alarm" "api_gateway_5xx" {
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {
-    ApiName   = aws_api_gateway_rest_api.main.name
-    Stage     = aws_api_gateway_stage.main.stage_name
+    ApiName = aws_api_gateway_rest_api.main.name
+    Stage   = aws_api_gateway_stage.main.stage_name
   }
 
   tags = local.common_tags

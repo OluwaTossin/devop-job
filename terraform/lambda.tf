@@ -110,12 +110,12 @@ resource "aws_cloudwatch_log_group" "get_application" {
 resource "aws_lambda_function" "submit_cv" {
   filename         = local.lambda_packages.submit_cv
   function_name    = "${local.name_prefix}-submit-cv"
-  role            = aws_iam_role.lambda.arn
-  handler         = "submit_cv.lambda_handler"
+  role             = aws_iam_role.lambda.arn
+  handler          = "submit_cv.lambda_handler"
   source_code_hash = filebase64sha256(local.lambda_packages.submit_cv)
-  runtime         = "python3.9"
-  timeout         = var.lambda_timeout
-  memory_size     = var.lambda_memory_size
+  runtime          = "python3.9"
+  timeout          = var.lambda_timeout
+  memory_size      = var.lambda_memory_size
 
   vpc_config {
     subnet_ids         = aws_subnet.private[*].id
@@ -145,12 +145,12 @@ resource "aws_lambda_function" "submit_cv" {
 resource "aws_lambda_function" "list_applications" {
   filename         = local.lambda_packages.list_applications
   function_name    = "${local.name_prefix}-list-applications"
-  role            = aws_iam_role.lambda.arn
-  handler         = "list_applications.lambda_handler"
+  role             = aws_iam_role.lambda.arn
+  handler          = "list_applications.lambda_handler"
   source_code_hash = filebase64sha256(local.lambda_packages.list_applications)
-  runtime         = "python3.9"
-  timeout         = var.lambda_timeout
-  memory_size     = var.lambda_memory_size
+  runtime          = "python3.9"
+  timeout          = var.lambda_timeout
+  memory_size      = var.lambda_memory_size
 
   vpc_config {
     subnet_ids         = aws_subnet.private[*].id
@@ -179,12 +179,12 @@ resource "aws_lambda_function" "list_applications" {
 resource "aws_lambda_function" "get_application" {
   filename         = local.lambda_packages.get_application
   function_name    = "${local.name_prefix}-get-application"
-  role            = aws_iam_role.lambda.arn
-  handler         = "get_application.lambda_handler"
+  role             = aws_iam_role.lambda.arn
+  handler          = "get_application.lambda_handler"
   source_code_hash = filebase64sha256(local.lambda_packages.get_application)
-  runtime         = "python3.9"
-  timeout         = var.lambda_timeout
-  memory_size     = var.lambda_memory_size
+  runtime          = "python3.9"
+  timeout          = var.lambda_timeout
+  memory_size      = var.lambda_memory_size
 
   vpc_config {
     subnet_ids         = aws_subnet.private[*].id
@@ -213,9 +213,9 @@ resource "aws_lambda_function" "get_application" {
 # Use pre-built Lambda packages with dependencies
 locals {
   lambda_packages = {
-    submit_cv = "${path.module}/submit_cv.zip"
-    list_applications = "${path.module}/list_applications.zip" 
-    get_application = "${path.module}/get_application.zip"
-    admin_login = "${path.module}/admin_login.zip"
+    submit_cv         = "${path.module}/submit_cv.zip"
+    list_applications = "${path.module}/list_applications.zip"
+    get_application   = "${path.module}/get_application.zip"
+    admin_login       = "${path.module}/admin_login.zip"
   }
 }

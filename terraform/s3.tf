@@ -25,7 +25,7 @@ resource "aws_s3_bucket_public_access_block" "frontend" {
 
 # S3 bucket policy for public read access
 resource "aws_s3_bucket_policy" "frontend" {
-  bucket = aws_s3_bucket.frontend.id
+  bucket     = aws_s3_bucket.frontend.id
   depends_on = [aws_s3_bucket_public_access_block.frontend]
 
   policy = jsonencode({

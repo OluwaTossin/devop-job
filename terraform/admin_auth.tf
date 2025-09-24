@@ -13,7 +13,7 @@ resource "aws_secretsmanager_secret_version" "admin_credentials" {
     # This is a SHA256 hash of the default password "admin123"
     # In production, use a stronger password and bcrypt hashing
     password_hash = "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"
-    jwt_secret = random_password.jwt_secret.result
+    jwt_secret    = random_password.jwt_secret.result
   })
 }
 
@@ -55,7 +55,7 @@ resource "aws_iam_role_policy" "admin_login_lambda" {
         Effect = "Allow"
         Action = [
           "logs:CreateLogGroup",
-          "logs:CreateLogStream", 
+          "logs:CreateLogStream",
           "logs:PutLogEvents"
         ]
         Resource = "arn:aws:logs:*:*:*"
@@ -74,7 +74,7 @@ resource "aws_iam_role_policy" "admin_login_lambda" {
 # CloudWatch Log Group for admin login Lambda
 resource "aws_cloudwatch_log_group" "admin_login" {
   name              = "/aws/lambda/${local.name_prefix}-admin-login"
-  retention_in_days = var.db_backup_retention_period * 2  # Double the backup retention for logs
+  retention_in_days = 7 # Fixed to valid CloudWatch retention period
 
   tags = local.common_tags
 }
@@ -83,17 +83,17 @@ resource "aws_cloudwatch_log_group" "admin_login" {
 resource "aws_lambda_function" "admin_login" {
   filename         = local.lambda_packages.admin_login
   function_name    = "${local.name_prefix}-admin-login"
-  role            = aws_iam_role.admin_login_lambda.arn
-  handler         = "admin_login.lambda_handler"
+  role             = aws_iam_role.admin_login_lambda.arn
+  handler          = "admin_login.lambda_handler"
   source_code_hash = filebase64sha256(local.lambda_packages.admin_login)
-  runtime         = "python3.9"
-  timeout         = var.lambda_timeout
-  memory_size     = var.lambda_memory_size
+  runtime          = "python3.9"
+  timeout          = var.lambda_timeout
+  memory_size      = var.lambda_memory_size
 
   environment {
     variables = {
       ADMIN_CREDENTIALS_SECRET = aws_secretsmanager_secret.admin_credentials.name
-      ENVIRONMENT = var.environment
+      ENVIRONMENT              = var.environment
     }
   }
 

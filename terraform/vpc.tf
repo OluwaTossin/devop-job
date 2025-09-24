@@ -55,8 +55,8 @@ resource "aws_subnet" "private" {
 # NAT Gateway
 resource "aws_eip" "nat" {
   count = 2
-  
-  domain = "vpc"
+
+  domain     = "vpc"
   depends_on = [aws_internet_gateway.main]
 
   tags = merge(local.common_tags, {

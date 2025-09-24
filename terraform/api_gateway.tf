@@ -82,8 +82,8 @@ resource "aws_api_gateway_integration" "submit_cv" {
   http_method = aws_api_gateway_method.submit_cv.http_method
 
   integration_http_method = "POST"
-  type                   = "AWS_PROXY"
-  uri                    = aws_lambda_function.submit_cv.invoke_arn
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.submit_cv.invoke_arn
 }
 
 # GET /applications (List applications)
@@ -100,8 +100,8 @@ resource "aws_api_gateway_integration" "list_applications" {
   http_method = aws_api_gateway_method.list_applications.http_method
 
   integration_http_method = "POST"
-  type                   = "AWS_PROXY"
-  uri                    = aws_lambda_function.list_applications.invoke_arn
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.list_applications.invoke_arn
 }
 
 # GET /applications/{id} (Get single application)
@@ -118,8 +118,8 @@ resource "aws_api_gateway_integration" "get_application" {
   http_method = aws_api_gateway_method.get_application.http_method
 
   integration_http_method = "POST"
-  type                   = "AWS_PROXY"
-  uri                    = aws_lambda_function.get_application.invoke_arn
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.get_application.invoke_arn
 }
 
 # Admin resource for authentication endpoints
@@ -194,8 +194,8 @@ resource "aws_api_gateway_integration" "admin_login" {
   http_method = aws_api_gateway_method.admin_login.http_method
 
   integration_http_method = "POST"
-  type                   = "AWS_PROXY"
-  uri                    = aws_lambda_function.admin_login.invoke_arn
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.admin_login.invoke_arn
 }
 
 # Lambda permissions for API Gateway
@@ -278,14 +278,14 @@ resource "aws_api_gateway_stage" "main" {
     destination_arn = aws_cloudwatch_log_group.api_gateway.arn
     format = jsonencode({
       requestId      = "$context.requestId"
-      ip            = "$context.identity.sourceIp"
-      caller        = "$context.identity.caller"
-      user          = "$context.identity.user"
-      requestTime   = "$context.requestTime"
-      httpMethod    = "$context.httpMethod"
-      resourcePath  = "$context.resourcePath"
-      status        = "$context.status"
-      protocol      = "$context.protocol"
+      ip             = "$context.identity.sourceIp"
+      caller         = "$context.identity.caller"
+      user           = "$context.identity.user"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      resourcePath   = "$context.resourcePath"
+      status         = "$context.status"
+      protocol       = "$context.protocol"
       responseLength = "$context.responseLength"
     })
   }
