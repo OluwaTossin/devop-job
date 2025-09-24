@@ -73,6 +73,28 @@ jobs:
         terraform workspace select prod || terraform workspace new prod
       working-directory: ./terraform
 
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install Python dependencies
+      run: |
+        cd backend
+        pip install -r requirements.txt -t .
+
+    - name: Package Lambda functions
+      run: |
+        cd backend
+        zip -r ../terraform/submit_cv.zip submit_cv.py
+        zip -r ../terraform/list_applications.zip list_applications.py
+        zip -r ../terraform/get_application.zip get_application.py
+        zip -r ../terraform/admin_login.zip admin_login.py
+        # Create init_database.zip if the file exists
+        if [ -f "init_database.py" ]; then
+          zip -r ../terraform/init_database.zip init_database.py
+        fi
+
     - name: Terraform Validate
       id: validate
       run: terraform validate -no-color
