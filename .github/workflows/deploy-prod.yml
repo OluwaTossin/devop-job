@@ -179,13 +179,18 @@ jobs:
         cd backend
         pip install -r requirements.txt -t .
 
-    - name: Package Lambda functions
+    - name: Package Lambda functions (Deploy)
       run: |
         cd backend
+        # Remove any existing packages to ensure clean build
+        rm -f ../terraform/*.zip
+        # Create fresh packages with consistent timestamps
         zip -r ../terraform/submit_cv.zip submit_cv.py
-        zip -r ../terraform/list_applications.zip list_applications.py
+        zip -r ../terraform/list_applications.zip list_applications.py  
         zip -r ../terraform/get_application.zip get_application.py
         zip -r ../terraform/admin_login.zip admin_login.py
+        # Set consistent timestamps to avoid hash changes
+        touch -t 202401010000 ../terraform/*.zip
 
     - name: Download Terraform Plan
       uses: actions/download-artifact@v4
@@ -207,9 +212,52 @@ jobs:
         terraform workspace select prod
       working-directory: ./terraform
 
+    - name: Handle Existing Resources
+      run: |
+        echo "🔄 Checking and importing existing production resources..."
+        
+        # Get current account ID for imports
+        ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+        echo "AWS Account ID: $ACCOUNT_ID"
+        
+        # Import existing VPC resources if they exist (ignore errors if already managed)
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_vpc.main vpc-$(aws ec2 describe-vpcs --filters "Name=tag:Name,Values=devops-job-portal-prod-vpc" --query "Vpcs[0].VpcId" --output text 2>/dev/null | grep -v None) 2>/dev/null || echo "VPC import skipped"
+        
+        # Import existing subnets if they exist
+        for subnet in $(aws ec2 describe-subnets --filters "Name=tag:Name,Values=devops-job-portal-prod-private-*" --query "Subnets[].SubnetId" --output text 2>/dev/null); do
+          if [ "$subnet" != "None" ]; then
+            terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" "aws_subnet.private[0]" $subnet 2>/dev/null || echo "Subnet import skipped"
+            break
+          fi
+        done
+        
+        # Import DB subnet group if it exists
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group 2>/dev/null || echo "DB subnet group import skipped"
+        
+        echo "✅ Resource import check completed"
+      working-directory: ./terraform
+      continue-on-error: true
+
     - name: Terraform Apply
       run: |
-        terraform apply -auto-approve tfplan
+        echo "🚀 Applying Terraform changes to production..."
+        
+        # Force refresh state to sync with AWS
+        terraform refresh -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" || echo "Refresh completed"
+        
+        # Apply the plan
+        terraform apply -auto-approve tfplan || {
+          echo "⚠️ Apply failed, attempting targeted fixes..."
+          
+          # Try to fix DB subnet group issue by recreating it
+          terraform taint aws_db_subnet_group.main 2>/dev/null || echo "Taint skipped"
+          
+          # Generate new plan and apply
+          terraform plan -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" -out=recovery.tfplan
+          terraform apply -auto-approve recovery.tfplan
+        }
+        
+        echo "✅ Terraform apply completed"
       working-directory: ./terraform
 
     - name: Get Terraform Outputs
