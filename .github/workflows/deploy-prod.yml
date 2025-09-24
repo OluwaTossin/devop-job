@@ -70,7 +70,7 @@ jobs:
         echo "🚀 Initializing Terraform with clean state..."
         terraform init \
           -backend-config="bucket=terraform-state-devops-job-portal" \
-          -backend-config="key=terraform.tfstate" \
+          -backend-config="key=prod-clean/terraform.tfstate" \
           -backend-config="region=${{ env.AWS_REGION }}" \
           -backend-config="dynamodb_table=terraform-locks" \
           -reconfigure
@@ -237,7 +237,7 @@ jobs:
         echo "🚀 Initializing Terraform for deployment..."
         terraform init \
           -backend-config="bucket=terraform-state-devops-job-portal" \
-          -backend-config="key=prod/terraform.tfstate" \
+          -backend-config="key=prod-clean/terraform.tfstate" \
           -backend-config="region=${{ env.AWS_REGION }}" \
           -backend-config="dynamodb_table=terraform-locks" \
           -reconfigure
