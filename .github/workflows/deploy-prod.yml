@@ -51,6 +51,13 @@ jobs:
       with:
         terraform_version: ${{ env.TERRAFORM_VERSION }}
 
+    - name: Clean Terraform Cache
+      run: |
+        echo "🧹 Cleaning Terraform cache to resolve provider issues..."
+        rm -rf .terraform .terraform.lock.hcl || true
+        echo "✅ Terraform cache cleaned"
+      working-directory: ./terraform
+
     - name: Terraform Format
       id: fmt
       run: terraform fmt -check
@@ -60,11 +67,14 @@ jobs:
     - name: Terraform Init
       id: init
       run: |
+        echo "🚀 Initializing Terraform with clean state..."
         terraform init \
           -backend-config="bucket=terraform-state-devops-job-portal" \
           -backend-config="key=terraform.tfstate" \
           -backend-config="region=${{ env.AWS_REGION }}" \
-          -backend-config="dynamodb_table=terraform-locks"
+          -backend-config="dynamodb_table=terraform-locks" \
+          -reconfigure
+        echo "✅ Terraform initialized successfully"
       working-directory: ./terraform
 
     - name: Terraform Workspace
@@ -90,10 +100,6 @@ jobs:
         zip -r ../terraform/list_applications.zip list_applications.py
         zip -r ../terraform/get_application.zip get_application.py
         zip -r ../terraform/admin_login.zip admin_login.py
-        # Create init_database.zip if the file exists
-        if [ -f "init_database.py" ]; then
-          zip -r ../terraform/init_database.zip init_database.py
-        fi
 
     - name: Terraform Validate
       id: validate
@@ -212,10 +218,6 @@ jobs:
         zip -r ../terraform/list_applications.zip list_applications.py
         zip -r ../terraform/get_application.zip get_application.py
         zip -r ../terraform/admin_login.zip admin_login.py
-        # Create init_database.zip if the file exists
-        if [ -f "init_database.py" ]; then
-          zip -r ../terraform/init_database.zip init_database.py
-        fi
 
     - name: Download Terraform Plan
       uses: actions/download-artifact@v4
@@ -223,13 +225,23 @@ jobs:
         name: terraform-plan
         path: terraform/
 
+    - name: Clean Terraform Cache
+      run: |
+        echo "🧹 Cleaning Terraform cache to resolve provider issues..."
+        rm -rf .terraform || true
+        echo "✅ Terraform cache cleaned"
+      working-directory: ./terraform
+
     - name: Terraform Init
       run: |
+        echo "🚀 Initializing Terraform for deployment..."
         terraform init \
           -backend-config="bucket=terraform-state-devops-job-portal" \
           -backend-config="key=prod/terraform.tfstate" \
           -backend-config="region=${{ env.AWS_REGION }}" \
-          -backend-config="dynamodb_table=terraform-locks"
+          -backend-config="dynamodb_table=terraform-locks" \
+          -reconfigure
+        echo "✅ Terraform initialized for deployment"
       working-directory: ./terraform
 
     - name: Terraform Workspace
