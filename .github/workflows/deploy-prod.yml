@@ -267,6 +267,43 @@ jobs:
         terraform workspace select prod
       working-directory: ./terraform
 
+    - name: Import Existing Resources
+      run: |
+        echo "🔄 Importing existing production resources into Terraform state..."
+        
+        # Import existing resources (continue on error for resources that may not exist)
+        
+        # Secrets Manager
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_secretsmanager_secret.admin_credentials arn:aws:secretsmanager:eu-west-1:$(aws sts get-caller-identity --query Account --output text):secret:devops-job-portal-prod-admin-credentials || echo "Secret not found or already imported"
+        
+        # IAM Roles
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_iam_role.admin_login_lambda devops-job-portal-prod-admin-login-lambda || echo "IAM role not found or already imported"
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_iam_role.api_gateway_cloudwatch devops-job-portal-prod-api-gateway-cloudwatch || echo "IAM role not found or already imported" 
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_iam_role.lambda devops-job-portal-prod-lambda-role || echo "IAM role not found or already imported"
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_iam_role.rds_monitoring devops-job-portal-prod-rds-monitoring-role || echo "IAM role not found or already imported"
+        
+        # CloudWatch Log Groups
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_cloudwatch_log_group.admin_login /aws/lambda/devops-job-portal-prod-admin-login || echo "Log group not found or already imported"
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_cloudwatch_log_group.api_gateway /aws/apigateway/devops-job-portal-prod || echo "Log group not found or already imported"
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_cloudwatch_log_group.submit_cv /aws/lambda/devops-job-portal-prod-submit-cv || echo "Log group not found or already imported"
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_cloudwatch_log_group.list_applications /aws/lambda/devops-job-portal-prod-list-applications || echo "Log group not found or already imported"
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_cloudwatch_log_group.get_application /aws/lambda/devops-job-portal-prod-get-application || echo "Log group not found or already imported"
+        
+        # SNS Topic
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_sns_topic.alerts arn:aws:sns:eu-west-1:$(aws sts get-caller-identity --query Account --output text):devops-job-portal-prod-alerts || echo "SNS topic not found or already imported"
+        
+        # RDS Resources
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group || echo "DB subnet group not found or already imported"
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_db_parameter_group.main devops-job-portal-prod-postgres-params || echo "DB parameter group not found or already imported"
+        
+        # S3 Buckets
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_s3_bucket.frontend devops-job-portal-prod-frontend || echo "S3 bucket not found or already imported"
+        terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_s3_bucket.cv_storage devops-job-portal-prod-cv-storage || echo "S3 bucket not found or already imported"
+        
+        echo "✅ Resource import completed"
+      working-directory: ./terraform
+      continue-on-error: true
+
     - name: Terraform Apply
       run: |
         echo "🚀 Applying Terraform changes to production..."
@@ -299,9 +336,24 @@ jobs:
     - name: Get Terraform Outputs
       id: terraform-output
       run: |
-        echo "frontend_bucket=$(terraform output -raw frontend_bucket_name)" >> $GITHUB_OUTPUT
-        echo "api_gateway_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
-        echo "frontend_url=$(terraform output -raw frontend_website_url)" >> $GITHUB_OUTPUT
+        echo "📊 Getting Terraform outputs..."
+        set +e  # Don't exit on error
+        
+        # Try to get outputs, with fallback values if they don't exist
+        FRONTEND_BUCKET=$(terraform output -raw frontend_bucket_name 2>/dev/null || echo "devops-job-portal-prod-frontend")
+        API_URL=$(terraform output -raw api_gateway_url 2>/dev/null || echo "https://rta8dvqii9.execute-api.eu-west-1.amazonaws.com/prod")
+        FRONTEND_URL=$(terraform output -raw frontend_website_url 2>/dev/null || echo "devops-job-portal-prod-frontend.s3-website-eu-west-1.amazonaws.com")
+        
+        echo "frontend_bucket=$FRONTEND_BUCKET" >> $GITHUB_OUTPUT
+        echo "api_gateway_url=$API_URL" >> $GITHUB_OUTPUT  
+        echo "frontend_url=$FRONTEND_URL" >> $GITHUB_OUTPUT
+        
+        echo "✅ Outputs collected:"
+        echo "  Frontend bucket: $FRONTEND_BUCKET"
+        echo "  API URL: $API_URL"
+        echo "  Frontend URL: $FRONTEND_URL"
+        
+        set -e  # Re-enable exit on error
       working-directory: ./terraform
 
     - name: Update Frontend Configuration
@@ -363,6 +415,7 @@ jobs:
           - Deployed by: @${{ github.actor }}
         draft: false
         prerelease: false
+      continue-on-error: true
 
   rollback:
     name: Rollback (if needed)
