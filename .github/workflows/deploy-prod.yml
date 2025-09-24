@@ -172,6 +172,11 @@ jobs:
         zip -r ../terraform/submit_cv.zip submit_cv.py
         zip -r ../terraform/list_applications.zip list_applications.py
         zip -r ../terraform/get_application.zip get_application.py
+        zip -r ../terraform/admin_login.zip admin_login.py
+        # Create init_database.zip if the file exists
+        if [ -f "init_database.py" ]; then
+          zip -r ../terraform/init_database.zip init_database.py
+        fi
 
     - name: Download Terraform Plan
       uses: actions/download-artifact@v4
