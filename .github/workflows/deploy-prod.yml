@@ -46,6 +46,24 @@ jobs:
       with:
         terraform_version: ${{ env.TERRAFORM_VERSION }}
 
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install Python dependencies
+      run: |
+        cd backend
+        pip install -r requirements.txt -t .
+
+    - name: Package Lambda functions
+      run: |
+        cd backend
+        zip -r ../terraform/submit_cv.zip submit_cv.py
+        zip -r ../terraform/list_applications.zip list_applications.py
+        zip -r ../terraform/get_application.zip get_application.py
+        zip -r ../terraform/admin_login.zip admin_login.py
+
     - name: Run Security Scan
       run: |
         echo "🔍 Running basic security checks..."
