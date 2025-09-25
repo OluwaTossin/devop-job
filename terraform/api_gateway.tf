@@ -242,6 +242,11 @@ resource "aws_api_gateway_deployment" "main" {
     aws_api_gateway_integration.list_applications,
     aws_api_gateway_integration.get_application,
     aws_api_gateway_integration.admin_login,
+    # Ensure Lambda invoke permissions are in place before deploying
+    aws_lambda_permission.submit_cv,
+    aws_lambda_permission.list_applications,
+    aws_lambda_permission.get_application,
+    aws_lambda_permission.admin_login,
   ]
 
   rest_api_id = aws_api_gateway_rest_api.main.id

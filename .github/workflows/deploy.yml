@@ -51,11 +51,12 @@ jobs:
     - name: Package Lambda functions
       run: |
         cd backend
-        # Package all Lambda handlers
-        zip -r ../terraform/submit_cv.zip submit_cv.py
-        zip -r ../terraform/list_applications.zip list_applications.py
-        zip -r ../terraform/get_application.zip get_application.py
-        zip -r ../terraform/admin_login.zip admin_login.py
+        # After installing deps into ./, bundle code + dependencies per function.
+        # Exclude boto3/botocore since they are available in the Lambda runtime and bloat the zip size.
+        for f in submit_cv list_applications get_application admin_login; do
+          zip -r ../terraform/${f}.zip . \
+            -x "boto3/*" "botocore/*" "s3transfer/*" "__pycache__/*" "*.pyc"
+        done
 
         # Stabilize timestamps to avoid hash drift between jobs
         touch -t 202401010000 ../terraform/*.zip
@@ -351,11 +352,33 @@ jobs:
     - name: Run basic health checks (dev)
       run: |
         set -e
-        echo "Checking API: ${{ steps.dev-out.outputs.api_gateway_url }}/applications"
-        curl -sSf "${{ steps.dev-out.outputs.api_gateway_url }}/applications" >/dev/null
-        echo "Checking Frontend: ${{ steps.dev-out.outputs.frontend_url }}"
-        curl -sSf "${{ steps.dev-out.outputs.frontend_url }}" >/dev/null
+        API="${{ steps.dev-out.outputs.api_gateway_url }}/applications"
+        FE="${{ steps.dev-out.outputs.frontend_url }}"
+        echo "Checking API: $API"
+        for i in {1..10}; do
+          if curl -sSf "$API" >/dev/null; then
+            echo "API is healthy"; break
+          fi
+          echo "Attempt $i/10 failed. Sleeping 10s before retry..."; sleep 10
+          if [ $i -eq 10 ]; then echo "API health check failed after retries"; exit 1; fi
+        done
+        echo "Checking Frontend: $FE"
+        for i in {1..10}; do
+          if curl -sSf "$FE" >/dev/null; then
+            echo "Frontend is healthy"; break
+          fi
+          echo "Attempt $i/10 failed. Sleeping 10s before retry..."; sleep 10
+          if [ $i -eq 10 ]; then echo "Frontend health check failed after retries"; exit 1; fi
+        done
         echo "✅ Dev environment looks healthy"
+
+    - name: Dump recent Lambda logs on failure
+      if: ${{ failure() }}
+      run: |
+        echo "Dumping recent Lambda logs for troubleshooting..."
+        aws logs tail "/aws/lambda/devops-job-portal-dev-list-applications" --since 30m --format short || true
+        aws logs tail "/aws/lambda/devops-job-portal-dev-submit-cv" --since 30m --format short || true
+        aws logs tail "/aws/lambda/devops-job-portal-dev-get-application" --since 30m --format short || true
 
   prod-plan:
     name: Terraform Plan (Production)
