@@ -200,7 +200,7 @@ resource "aws_api_gateway_integration" "admin_login" {
 
 # Lambda permissions for API Gateway
 resource "aws_lambda_permission" "submit_cv" {
-  statement_id  = "AllowExecutionFromAPIGateway"
+  statement_id  = "AllowExecutionFromAPIGateway-${var.environment}"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.submit_cv.function_name
   principal     = "apigateway.amazonaws.com"
@@ -208,7 +208,7 @@ resource "aws_lambda_permission" "submit_cv" {
 }
 
 resource "aws_lambda_permission" "list_applications" {
-  statement_id  = "AllowExecutionFromAPIGateway"
+  statement_id  = "AllowExecutionFromAPIGateway-${var.environment}"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.list_applications.function_name
   principal     = "apigateway.amazonaws.com"
@@ -216,7 +216,7 @@ resource "aws_lambda_permission" "list_applications" {
 }
 
 resource "aws_lambda_permission" "get_application" {
-  statement_id  = "AllowExecutionFromAPIGateway"
+  statement_id  = "AllowExecutionFromAPIGateway-${var.environment}"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.get_application.function_name
   principal     = "apigateway.amazonaws.com"
@@ -224,7 +224,7 @@ resource "aws_lambda_permission" "get_application" {
 }
 
 resource "aws_lambda_permission" "admin_login" {
-  statement_id  = "AllowExecutionFromAPIGateway"
+  statement_id  = "AllowExecutionFromAPIGateway-${var.environment}"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.admin_login.function_name
   principal     = "apigateway.amazonaws.com"
