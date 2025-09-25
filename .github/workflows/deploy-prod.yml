@@ -1,14 +1,9 @@
-name: Deploy to Production
+name: (Disabled) Deploy to Production
 
 on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
-    inputs:
-      confirm_deployment:
-        description: 'Type "DEPLOY" to confirm production deployment'
-        required: true
-        default: ''
+  # Disabled: this workflow is superseded by the unified dev→prod pipeline.
+  # Keeping it callable only (not triggered by push or manual dispatch).
+  workflow_call:
 
 env:
   AWS_REGION: eu-west-1
@@ -18,7 +13,7 @@ env:
 
 jobs:
   terraform-plan:
-    name: Terraform Plan (Production)
+    name: DISABLED - Terraform Plan (Production)
     runs-on: ubuntu-latest
     environment: production
     if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
@@ -188,7 +183,7 @@ jobs:
         retention-days: 5
 
   deploy:
-    name: Deploy to Production
+    name: DISABLED - Deploy to Production
     needs: terraform-plan
     runs-on: ubuntu-latest
     environment: production

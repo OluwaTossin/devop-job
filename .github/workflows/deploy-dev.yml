@@ -1,4 +1,4 @@
-name: Deploy to Development
+name: Deploy Dev, then Promote to Prod
 
 on:
   push:
@@ -9,12 +9,15 @@ on:
 env:
   AWS_REGION: eu-west-1
   TERRAFORM_VERSION: 1.6.0
+  # Prod-specific toggles (used during promotion)
+  USE_EXISTING_DB_SUBNET_GROUP: "true"
+  EXISTING_DB_SUBNET_GROUP_NAME: "devops-job-portal-prod-db-subnet-group"
 
 jobs:
   terraform-plan:
     name: Terraform Plan (Development)
     runs-on: ubuntu-latest
-    environment: development
+    # No environment gating for dev to keep pipeline simple
     
     steps:
     - name: Checkout
@@ -140,7 +143,7 @@ jobs:
     name: Deploy to Development
     needs: terraform-plan
     runs-on: ubuntu-latest
-    environment: development
+    # No environment gating for dev to keep pipeline simple
     if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
     
     steps:
@@ -222,33 +225,263 @@ jobs:
       continue-on-error: true
 
   test:
-    name: Run Tests
+    name: Dev Smoke Tests
     needs: deploy
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
-    
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
     steps:
     - name: Checkout
       uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+    - name: Terraform Init (dev)
+      
+      run: |
+        terraform init \
+          -backend-config="bucket=terraform-state-devops-job-portal" \
+          -backend-config="key=dev/terraform.tfstate" \
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="dynamodb_table=terraform-locks"
+      working-directory: ./terraform
+
+    - name: Terraform Workspace (dev)
+      run: terraform workspace select dev
+      working-directory: ./terraform
+
+    - name: Read Terraform Outputs (dev)
+      id: dev-out
+      run: |
+        echo "frontend_bucket=$(terraform output -raw frontend_bucket_name)" >> $GITHUB_OUTPUT
+        echo "api_gateway_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+        echo "frontend_url=http://$(terraform output -raw frontend_bucket_name).s3-website-${{ env.AWS_REGION }}.amazonaws.com" >> $GITHUB_OUTPUT
+      working-directory: ./terraform
+
+    - name: Run basic health checks (dev)
+      run: |
+        set -e
+        echo "Checking API: ${{ steps.dev-out.outputs.api_gateway_url }}/applications"
+        curl -sSf "${{ steps.dev-out.outputs.api_gateway_url }}/applications" >/dev/null
+        echo "Checking Frontend: ${{ steps.dev-out.outputs.frontend_url }}"
+        curl -sSf "${{ steps.dev-out.outputs.frontend_url }}" >/dev/null
+        echo "✅ Dev environment looks healthy"
+
+  prod-plan:
+    name: Terraform Plan (Production)
+    needs: [deploy, test]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
 
     - name: Setup Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
 
-    - name: Install test dependencies
-      run: |
-        pip install pytest requests
+    - name: Download Lambda Packages
+      uses: actions/download-artifact@v4
+      with:
+        name: lambda-packages
+        path: terraform/
 
-    - name: Run basic health check
+    - name: Terraform Init (prod)
       run: |
-        echo "Basic health checks would run here"
-        echo "API endpoint tests"
-        echo "Frontend accessibility tests"
+        terraform init \
+          -backend-config="bucket=terraform-state-devops-job-portal" \
+          -backend-config="key=prod/terraform.tfstate" \
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="dynamodb_table=terraform-locks"
+      working-directory: ./terraform
 
-    - name: Notify deployment success
+    - name: Terraform Workspace (prod)
+      run: |
+        terraform workspace select prod || terraform workspace new prod
+      working-directory: ./terraform
+
+    - name: Import Existing DB Instance (prod)
+      run: |
+        echo "🔍 Ensuring DB instance is in Terraform state before planning..."
+        DB_INSTANCE_ID="devops-job-portal-prod-database"
+
+        if terraform state show aws_db_instance.main >/dev/null 2>&1; then
+          echo "✅ DB instance already tracked in Terraform state"
+          terraform state show aws_db_instance.main | head -20 || true
+        else
+          echo "ℹ️  DB instance not in state; attempting Terraform import..."
+          set +e
+          IMPORT_OUTPUT=$(terraform import aws_db_instance.main "$DB_INSTANCE_ID" 2>&1)
+          IMPORT_CODE=$?
+          set -e
+          echo "$IMPORT_OUTPUT" | tail -n +1 | sed 's/^/terraform import: /'
+
+          if [ $IMPORT_CODE -eq 0 ]; then
+            echo "✅ DB instance import successful"
+          else
+            if echo "$IMPORT_OUTPUT" | grep -qiE 'DBInstanceNotFound|not.?found|NoSuchEntity'; then
+              echo "ℹ️  DB instance not found in AWS; Terraform will create it if needed"
+            else
+              echo "❌ Import failed for a non-NotFound reason (likely permissions or conflict)."
+              echo "⛔ Aborting to avoid generating a bad plan that will fail during apply."
+              exit 1
+            fi
+          fi
+
+          if terraform state show aws_db_instance.main >/dev/null 2>&1; then
+            echo "📋 Post-import verification:"
+            terraform state show aws_db_instance.main | head -20 || true
+          fi
+        fi
+      working-directory: ./terraform
+
+    - name: Ensure DB subnet group not tracked (prod)
+      if: env.USE_EXISTING_DB_SUBNET_GROUP == 'true'
+      run: |
+        echo "🔧 Using existing DB subnet group; ensuring Terraform state does not manage it..."
+        if terraform state show aws_db_subnet_group.main >/dev/null 2>&1; then
+          echo "🧹 Removing aws_db_subnet_group.main from state to avoid destroy/create"
+          terraform state rm aws_db_subnet_group.main
+        else
+          echo "✅ DB subnet group not in state (good)"
+        fi
+      working-directory: ./terraform
+
+    - name: Terraform Validate (prod)
+      run: terraform validate -no-color
+      working-directory: ./terraform
+
+    - name: Terraform Plan (prod)
+      run: |
+        terraform plan -no-color \
+          -var="environment=prod" \
+          -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" \
+          -var="use_existing_db_subnet_group=${{ env.USE_EXISTING_DB_SUBNET_GROUP }}" \
+          -var="existing_db_subnet_group_name=${{ env.EXISTING_DB_SUBNET_GROUP_NAME }}" \
+          -out=tfplan
+      working-directory: ./terraform
+
+    - name: Upload Plan (prod)
+      uses: actions/upload-artifact@v4
+      with:
+        name: terraform-plan-prod
+        path: terraform/tfplan
+        retention-days: 5
+
+  prod-deploy:
+    name: Deploy to Production (Approval Required)
+    needs: prod-plan
+    runs-on: ubuntu-latest
+    environment: production
+    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+    - name: Download Lambda Packages
+      uses: actions/download-artifact@v4
+      with:
+        name: lambda-packages
+        path: terraform/
+
+    - name: Terraform Init (prod)
+      run: |
+        terraform init \
+          -backend-config="bucket=terraform-state-devops-job-portal" \
+          -backend-config="key=prod/terraform.tfstate" \
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="dynamodb_table=terraform-locks"
+      working-directory: ./terraform
+
+    - name: Terraform Workspace (prod)
+      run: terraform workspace select prod
+      working-directory: ./terraform
+
+    - name: Download Plan (prod)
+      uses: actions/download-artifact@v4
+      with:
+        name: terraform-plan-prod
+        path: terraform/
+
+    - name: Terraform Apply (prod)
+      run: |
+        echo "🚀 Applying Terraform changes to production..."
+        terraform apply -auto-approve tfplan
+        echo "✅ Terraform deployment completed"
+      working-directory: ./terraform
+
+    - name: Get Terraform Outputs (prod)
+      id: terraform-output-prod
+      run: |
+        echo "frontend_bucket=$(terraform output -raw frontend_bucket_name)" >> $GITHUB_OUTPUT
+        echo "api_gateway_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+        echo "frontend_url=$(terraform output -raw frontend_website_url)" >> $GITHUB_OUTPUT
+      working-directory: ./terraform
+
+    - name: Update Frontend Configuration (prod)
+      run: |
+        sed -i "s|https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/dev|${{ steps.terraform-output-prod.outputs.api_gateway_url }}|g" frontend/js/app.js
+
+    - name: Deploy Frontend to S3 (prod)
+      run: |
+        aws s3 sync frontend/ s3://${{ steps.terraform-output-prod.outputs.frontend_bucket }} --delete
+        aws s3 cp frontend/index.html s3://${{ steps.terraform-output-prod.outputs.frontend_bucket }}/index.html --cache-control "no-cache"
+
+    - name: Production Health Check
+      run: |
+        echo "🏥 Running production health checks..."
+        if curl -f "${{ steps.terraform-output-prod.outputs.api_gateway_url }}/applications" >/dev/null 2>&1; then
+          echo "✅ API Gateway is responding"
+        else
+          echo "⚠️ API Gateway health check failed"
+        fi
+        if curl -f "http://${{ steps.terraform-output-prod.outputs.frontend_url }}" >/dev/null 2>&1; then
+          echo "✅ Frontend is accessible"
+        else
+          echo "⚠️ Frontend health check failed"
+        fi
+        echo "✅ Health checks completed"
+      continue-on-error: true
+
+    - name: Notify production deployment success
       if: success()
       run: |
-        echo "✅ Development deployment successful!"
-        echo "Frontend URL: http://${{ needs.deploy.outputs.frontend_bucket }}.s3-website-${{ env.AWS_REGION }}.amazonaws.com"
-        echo "API URL: ${{ needs.deploy.outputs.api_gateway_url }}"
+        echo "🎉 Production deployment successful!"
+        echo "Frontend URL: http://${{ steps.terraform-output-prod.outputs.frontend_url }}"
+        echo "API URL: ${{ steps.terraform-output-prod.outputs.api_gateway_url }}"
+        echo "Deployed by: @${{ github.actor }}"
+        echo "Commit: ${{ github.sha }}"
