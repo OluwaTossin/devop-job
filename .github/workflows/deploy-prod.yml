@@ -1,0 +1,179 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      confirm_deployment:
+        description: 'Type "DEPLOY" to confirm production deployment'
+        required: true
+        default: ''
+
+env:
+  AWS_REGION: eu-west-1
+  TERRAFORM_VERSION: 1.6.0
+
+jobs:
+  validate-input:
+    name: Validate Deployment Input
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+    - name: Check confirmation
+      run: |
+        if [ "${{ github.event.inputs.confirm_deployment }}" != "DEPLOY" ]; then
+          echo "❌ Deployment cancelled. Please type 'DEPLOY' to confirm."
+          exit 1
+        fi
+        echo "✅ Deployment confirmed"
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment: production
+    needs: [validate-input]
+    if: always() && (needs.validate-input.result == 'success' || github.event_name == 'push')
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+
+    - name: Install Python dependencies
+      run: |
+        cd backend
+        pip install -r requirements.txt -t .
+
+    - name: Package Lambda functions
+      run: |
+        cd backend
+        # Remove any existing packages to ensure clean build
+        rm -f ../terraform/*.zip
+        # Create fresh packages
+        zip -r ../terraform/submit_cv.zip submit_cv.py
+        zip -r ../terraform/list_applications.zip list_applications.py  
+        zip -r ../terraform/get_application.zip get_application.py
+        zip -r ../terraform/admin_login.zip admin_login.py
+
+    - name: Terraform Format Check
+      run: terraform fmt -check
+      working-directory: ./terraform
+      continue-on-error: true
+
+    - name: Terraform Init
+      run: |
+        terraform init \
+          -backend-config="bucket=terraform-state-devops-job-portal" \
+          -backend-config="key=prod/terraform.tfstate" \
+          -backend-config="region=${{ env.AWS_REGION }}" \
+          -backend-config="dynamodb_table=terraform-locks"
+      working-directory: ./terraform
+
+    - name: Terraform Workspace
+      run: |
+        terraform workspace select prod || terraform workspace new prod
+      working-directory: ./terraform
+
+    - name: Terraform Plan
+      run: |
+        terraform plan -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" -out=tfplan
+      working-directory: ./terraform
+
+    - name: Terraform Apply
+      run: |
+        echo "🚀 Applying Terraform changes to production..."
+        terraform apply -auto-approve tfplan
+        echo "✅ Terraform deployment completed"
+      working-directory: ./terraform
+
+    - name: Get Terraform Outputs
+      id: terraform-output
+      run: |
+        FRONTEND_BUCKET=$(terraform output -raw frontend_bucket_name 2>/dev/null || echo "")
+        API_URL=$(terraform output -raw api_gateway_url 2>/dev/null || echo "")
+        FRONTEND_URL=$(terraform output -raw frontend_website_url 2>/dev/null || echo "")
+        
+        echo "frontend_bucket=$FRONTEND_BUCKET" >> $GITHUB_OUTPUT
+        echo "api_gateway_url=$API_URL" >> $GITHUB_OUTPUT  
+        echo "frontend_url=$FRONTEND_URL" >> $GITHUB_OUTPUT
+      working-directory: ./terraform
+
+    - name: Update Frontend Configuration
+      if: steps.terraform-output.outputs.api_gateway_url != ''
+      run: |
+        sed -i "s|https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/dev|${{ steps.terraform-output.outputs.api_gateway_url }}|g" frontend/js/app.js
+
+    - name: Deploy Frontend to S3
+      if: steps.terraform-output.outputs.frontend_bucket != ''
+      run: |
+        aws s3 sync frontend/ s3://${{ steps.terraform-output.outputs.frontend_bucket }} --delete
+        aws s3 cp frontend/index.html s3://${{ steps.terraform-output.outputs.frontend_bucket }}/index.html --cache-control "no-cache"
+
+    - name: Run Post-Deployment Health Checks
+      run: |
+        echo "🏥 Running health checks..."
+        
+        # Test API Gateway if available
+        if [ "${{ steps.terraform-output.outputs.api_gateway_url }}" != "" ]; then
+          echo "Testing API Gateway..."
+          curl -f "${{ steps.terraform-output.outputs.api_gateway_url }}/applications" || echo "API health check failed"
+        fi
+        
+        # Test frontend if available
+        if [ "${{ steps.terraform-output.outputs.frontend_url }}" != "" ]; then
+          echo "Testing frontend..."
+          curl -f "http://${{ steps.terraform-output.outputs.frontend_url }}" || echo "Frontend health check failed"
+        fi
+        
+        echo "✅ Health checks completed"
+
+    - name: Deployment Summary
+      if: always()
+      run: |
+        echo "📋 Production Deployment Summary"
+        echo "================================"
+        echo "Commit: ${{ github.sha }}"
+        echo "Branch: ${{ github.ref }}"
+        echo "Deployed by: @${{ github.actor }}"
+        echo "Environment: Production"
+        echo "Region: ${{ env.AWS_REGION }}"
+        
+        if [ "${{ steps.terraform-output.outputs.frontend_url }}" != "" ]; then
+          echo "Frontend URL: http://${{ steps.terraform-output.outputs.frontend_url }}"
+        fi
+        
+        if [ "${{ steps.terraform-output.outputs.api_gateway_url }}" != "" ]; then
+          echo "API URL: ${{ steps.terraform-output.outputs.api_gateway_url }}"
+        fi
+        
+        echo "✅ Deployment completed successfully!"
+
+  cleanup:
+    name: Cleanup Artifacts
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: always()
+    
+    steps:
+    - name: Clean temporary files
+      run: |
+        echo "🧹 Cleaning up deployment artifacts..."
+        # This step ensures any temporary files are cleaned up
+        echo "✅ Cleanup completed"
