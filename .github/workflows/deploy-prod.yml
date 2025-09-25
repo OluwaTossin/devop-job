@@ -117,6 +117,37 @@ jobs:
       run: terraform validate -no-color
       working-directory: ./terraform
 
+    - name: Import Existing DB Subnet Group
+      run: |
+        echo "🔍 Ensuring DB subnet group is in Terraform state before planning..."
+        
+        # Define expected name based on locals/variables (project_name-env)
+        DB_SUBNET_GROUP_NAME="devops-job-portal-prod-db-subnet-group"
+        
+        # Check if resource already tracked in state
+        if terraform state show aws_db_subnet_group.main >/dev/null 2>&1; then
+          echo "✅ DB subnet group already tracked in Terraform state"
+          terraform state show aws_db_subnet_group.main | head -10 || true
+        else
+          echo "ℹ️  DB subnet group not in state; checking AWS for existing resource..."
+          if aws rds describe-db-subnet-groups --db-subnet-group-name "$DB_SUBNET_GROUP_NAME" >/dev/null 2>&1; then
+            echo "✅ Found existing DB subnet group in AWS: $DB_SUBNET_GROUP_NAME"
+            echo "🔄 Importing into Terraform state..."
+            if terraform import aws_db_subnet_group.main "$DB_SUBNET_GROUP_NAME"; then
+              echo "✅ Import successful"
+            else
+              echo "❌ Import failed; cannot safely continue with plan"
+              exit 1
+            fi
+            echo "📋 Post-import verification:"
+            terraform state show aws_db_subnet_group.main | head -10 || true
+          else
+            echo "✅ No existing DB subnet group in AWS; Terraform may create it"
+          fi
+        fi
+      working-directory: ./terraform
+      continue-on-error: false
+
     - name: Terraform Plan
       id: plan
       run: |
@@ -189,58 +220,6 @@ jobs:
         name: terraform-plan-prod
         path: terraform/
 
-    - name: Import Existing DB Subnet Group
-      run: |
-        echo "🔍 Checking if DB subnet group needs to be imported..."
-        
-        # Define the expected DB subnet group name
-        DB_SUBNET_GROUP_NAME="devops-job-portal-prod-db-subnet-group"
-        
-        # Check if resource exists in Terraform state
-        if terraform state show aws_db_subnet_group.main >/dev/null 2>&1; then
-          echo "✅ DB subnet group already in terraform state"
-          terraform state show aws_db_subnet_group.main | head -10
-        else
-          echo "❌ DB subnet group NOT in terraform state, checking AWS..."
-          
-          # Verify the resource exists in AWS first
-          if aws rds describe-db-subnet-groups --db-subnet-group-name "$DB_SUBNET_GROUP_NAME" >/dev/null 2>&1; then
-            echo "✅ DB subnet group '$DB_SUBNET_GROUP_NAME' exists in AWS"
-            
-            # Show all current state resources for debugging
-            echo "📋 Current Terraform state resources:"
-            terraform state list
-            
-            # Try import with retries
-            echo "🔄 Attempting to import DB subnet group..."
-            
-            if terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_db_subnet_group.main "$DB_SUBNET_GROUP_NAME"; then
-              echo "✅ Import successful with variables"
-            elif terraform import aws_db_subnet_group.main "$DB_SUBNET_GROUP_NAME"; then  
-              echo "✅ Import successful without variables"
-            else
-              echo "❌ All import attempts failed"
-              echo "This deployment will likely fail due to resource conflict"
-              exit 1
-            fi
-            
-            # Final verification with detailed output
-            if terraform state show aws_db_subnet_group.main >/dev/null 2>&1; then
-              echo "✅ Import verification: resource successfully imported"
-              echo "📋 Imported resource details:"
-              terraform state show aws_db_subnet_group.main | head -5
-            else
-              echo "❌ Import verification failed: resource still not in state"
-              exit 1
-            fi
-            
-          else
-            echo "❌ DB subnet group '$DB_SUBNET_GROUP_NAME' does not exist in AWS"
-            echo "Terraform will create it during apply"
-          fi
-        fi
-      working-directory: ./terraform
-      continue-on-error: false
 
     - name: Terraform Apply
       run: |
