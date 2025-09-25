@@ -109,6 +109,15 @@ resource "aws_db_instance" "main" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-database"
   })
+
+  # When managing an existing DB instance that lives in a different VPC,
+  # avoid attempting to change its attached security groups, which would fail
+  # with InvalidParameterCombination (security group and DB in different VPCs).
+  lifecycle {
+    ignore_changes = [
+      vpc_security_group_ids
+    ]
+  }
 }
 
 # IAM role for RDS monitoring
