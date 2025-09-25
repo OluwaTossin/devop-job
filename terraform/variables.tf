@@ -78,6 +78,19 @@ variable "db_backup_retention_period" {
   default     = 1
 }
 
+# Use an existing DB subnet group instead of creating one
+variable "use_existing_db_subnet_group" {
+  description = "When true, use an existing DB subnet group instead of creating it"
+  type        = bool
+  default     = false
+}
+
+variable "existing_db_subnet_group_name" {
+  description = "Name of the existing DB subnet group to use when use_existing_db_subnet_group is true"
+  type        = string
+  default     = null
+}
+
 variable "db_multi_az" {
   description = "Enable Multi-AZ deployment for RDS"
   type        = bool

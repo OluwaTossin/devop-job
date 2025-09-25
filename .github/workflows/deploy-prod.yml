@@ -13,6 +13,8 @@ on:
 env:
   AWS_REGION: eu-west-1
   TERRAFORM_VERSION: 1.6.0
+  USE_EXISTING_DB_SUBNET_GROUP: "true"
+  EXISTING_DB_SUBNET_GROUP_NAME: "devops-job-portal-prod-db-subnet-group"
 
 jobs:
   terraform-plan:
@@ -117,53 +119,28 @@ jobs:
       run: terraform validate -no-color
       working-directory: ./terraform
 
-    - name: Import Existing DB Subnet Group
+    # Ensure state does not track DB subnet group when using an existing one
+    - name: Ensure DB subnet group not tracked in state
+      if: env.USE_EXISTING_DB_SUBNET_GROUP == 'true'
       run: |
-        echo "🔍 Ensuring DB subnet group is in Terraform state before planning..."
-        
-        # Define expected name based on locals/variables (project_name-env)
-        DB_SUBNET_GROUP_NAME="devops-job-portal-prod-db-subnet-group"
-        
-        # Check if resource already tracked in state
+        echo "🔧 Using existing DB subnet group; ensuring Terraform state does not manage it..."
         if terraform state show aws_db_subnet_group.main >/dev/null 2>&1; then
-          echo "✅ DB subnet group already tracked in Terraform state"
-          terraform state show aws_db_subnet_group.main | head -10 || true
+          echo "🧹 Removing aws_db_subnet_group.main from state to avoid destroy/create"
+          terraform state rm aws_db_subnet_group.main
         else
-          echo "ℹ️  DB subnet group not in state; attempting Terraform import (no AWS CLI dependency)..."
-          
-          # Attempt import and capture stderr for decision making
-          set +e
-          IMPORT_OUTPUT=$(terraform import aws_db_subnet_group.main "$DB_SUBNET_GROUP_NAME" 2>&1)
-          IMPORT_CODE=$?
-          set -e
-          echo "$IMPORT_OUTPUT" | tail -n +1 | sed 's/^/terraform import: /'
-          
-          if [ $IMPORT_CODE -eq 0 ]; then
-            echo "✅ Import successful"
-          else
-            # If it's clearly a NotFound error, continue and let Terraform create it
-            if echo "$IMPORT_OUTPUT" | grep -qiE 'DBSubnetGroupNotFound|not.?found|NoSuchEntity'; then
-              echo "ℹ️  DB subnet group not found in AWS; Terraform will create it if needed"
-            else
-              echo "❌ Import failed for a non-NotFound reason (likely permissions or conflict)."
-              echo "⛔ Aborting to avoid generating a bad plan that will fail during apply."
-              exit 1
-            fi
-          fi
-          
-          # Post-import verification if import succeeded
-          if terraform state show aws_db_subnet_group.main >/dev/null 2>&1; then
-            echo "📋 Post-import verification:"
-            terraform state show aws_db_subnet_group.main | head -10 || true
-          fi
+          echo "✅ DB subnet group not in state (good)"
         fi
       working-directory: ./terraform
-      continue-on-error: false
 
     - name: Terraform Plan
       id: plan
       run: |
-        terraform plan -no-color -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" -out=tfplan
+        terraform plan -no-color \
+          -var="environment=prod" \
+          -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" \
+          -var="use_existing_db_subnet_group=${{ env.USE_EXISTING_DB_SUBNET_GROUP }}" \
+          -var="existing_db_subnet_group_name=${{ env.EXISTING_DB_SUBNET_GROUP_NAME }}" \
+          -out=tfplan
       working-directory: ./terraform
 
     - name: Upload Plan

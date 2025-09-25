@@ -1,11 +1,18 @@
-# DB Subnet Group
+# DB Subnet Group (create only when not using existing)
 resource "aws_db_subnet_group" "main" {
+  count      = var.use_existing_db_subnet_group ? 0 : 1
   name       = "${local.name_prefix}-db-subnet-group"
   subnet_ids = aws_subnet.private[*].id
 
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-db-subnet-group"
   })
+}
+
+# Optional: reference an existing DB subnet group by name
+data "aws_db_subnet_group" "existing" {
+  count = var.use_existing_db_subnet_group && var.existing_db_subnet_group_name != null ? 1 : 0
+  name  = var.existing_db_subnet_group_name
 }
 
 # Security Group for RDS
@@ -73,7 +80,7 @@ resource "aws_db_instance" "main" {
   password = var.db_password
 
   # Network configuration
-  db_subnet_group_name   = aws_db_subnet_group.main.name
+  db_subnet_group_name   = var.use_existing_db_subnet_group ? data.aws_db_subnet_group.existing[0].name : aws_db_subnet_group.main[0].name
   vpc_security_group_ids = [aws_security_group.rds.id]
   publicly_accessible    = false
   port                   = 5432
