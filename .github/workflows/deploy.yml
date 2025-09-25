@@ -12,6 +12,9 @@ env:
   # Prod-specific toggles (used during promotion)
   USE_EXISTING_DB_SUBNET_GROUP: "true"
   EXISTING_DB_SUBNET_GROUP_NAME: "devops-job-portal-prod-db-subnet-group"
+  # Dev-specific toggles (avoid modifying an existing dev DB subnet group in a different VPC)
+  USE_EXISTING_DB_SUBNET_GROUP_DEV: "true"
+  EXISTING_DB_SUBNET_GROUP_NAME_DEV: "devops-job-portal-dev-db-subnet-group"
 
 jobs:
   terraform-plan:
@@ -118,8 +121,10 @@ jobs:
         terraform state show aws_s3_bucket.frontend   >/dev/null 2>&1 || terraform import aws_s3_bucket.frontend   devops-job-portal-dev-frontend || true
         terraform state show aws_s3_bucket.cv_storage >/dev/null 2>&1 || terraform import aws_s3_bucket.cv_storage devops-job-portal-dev-cv-storage || true
 
-        # 5) RDS DB Subnet Group and Parameter Group (unconditional import attempts)
-        terraform state show aws_db_subnet_group.main[0] >/dev/null 2>&1 || terraform import aws_db_subnet_group.main["0"] devops-job-portal-dev-db-subnet-group || true
+  # 5) RDS DB Subnet Group and Parameter Group
+  # Using existing DB subnet group in dev; ensure not tracked to avoid cross-VPC modify
+  terraform state show aws_db_subnet_group.main >/dev/null 2>&1 && terraform state rm aws_db_subnet_group.main || true
+  terraform state show aws_db_subnet_group.main[0] >/dev/null 2>&1 && terraform state rm aws_db_subnet_group.main["0"] || true
         terraform state show aws_db_parameter_group.main >/dev/null 2>&1 || terraform import aws_db_parameter_group.main devops-job-portal-dev-postgres-params || true
 
         # 6) NAT EIP and NAT Gateway (index 0) via tag discovery to avoid EIP limits
@@ -134,12 +139,26 @@ jobs:
         if [ "$NAT_ID" != "None" ] && [ "$NAT_ID" != "null" ]; then
           terraform state show aws_nat_gateway.main[0] >/dev/null 2>&1 || terraform import aws_nat_gateway.main["0"] "$NAT_ID" || true
         fi
+
+        # 7) Lambda functions (unconditional import attempts)
+        terraform state show aws_lambda_function.admin_login       >/dev/null 2>&1 || terraform import aws_lambda_function.admin_login       devops-job-portal-dev-admin-login || true
+        terraform state show aws_lambda_function.submit_cv         >/dev/null 2>&1 || terraform import aws_lambda_function.submit_cv         devops-job-portal-dev-submit-cv || true
+        terraform state show aws_lambda_function.list_applications >/dev/null 2>&1 || terraform import aws_lambda_function.list_applications devops-job-portal-dev-list-applications || true
+        terraform state show aws_lambda_function.get_application   >/dev/null 2>&1 || terraform import aws_lambda_function.get_application   devops-job-portal-dev-get-application || true
+
+        # 8) RDS DB Instance (best effort)
+        DB_INSTANCE_ID="devops-job-portal-dev-database"
+        terraform state show aws_db_instance.main >/dev/null 2>&1 || terraform import aws_db_instance.main "$DB_INSTANCE_ID" || true
       shell: bash
 
     - name: Terraform Plan
       id: plan
       run: |
-        terraform plan -no-color -var="environment=dev" -out=tfplan
+        terraform plan -no-color \
+          -var="environment=dev" \
+          -var="use_existing_db_subnet_group=${{ env.USE_EXISTING_DB_SUBNET_GROUP_DEV }}" \
+          -var="existing_db_subnet_group_name=${{ env.EXISTING_DB_SUBNET_GROUP_NAME_DEV }}" \
+          -out=tfplan
       working-directory: ./terraform
       continue-on-error: true
 
