@@ -198,20 +198,35 @@ jobs:
           echo "✅ DB subnet group already in terraform state"
         else
           echo "🔄 Importing existing DB subnet group to terraform state..."
-          terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group || {
-            echo "⚠️ Import failed, trying without variables..."
-            terraform import aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group || echo "Import failed - continuing anyway"
-          }
           
-          # Verify import worked
-          if terraform state show aws_db_subnet_group.main >/dev/null 2>&1; then
-            echo "✅ Import successful"
+          # First, verify the resource exists in AWS
+          if aws rds describe-db-subnet-groups --db-subnet-group-name devops-job-portal-prod-db-subnet-group >/dev/null 2>&1; then
+            echo "✅ DB subnet group exists in AWS"
+            
+            # Try import with variables first
+            if terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group; then
+              echo "✅ Import successful with variables"
+            elif terraform import aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group; then
+              echo "✅ Import successful without variables"
+            else
+              echo "❌ Import failed - resource may be managed elsewhere"
+              # Show current state for debugging
+              terraform state list | grep subnet || echo "No subnet resources in state"
+            fi
           else
-            echo "❌ Import failed - resource not in state"
+            echo "❌ DB subnet group does not exist in AWS"
+          fi
+          
+          # Final verification
+          if terraform state show aws_db_subnet_group.main >/dev/null 2>&1; then
+            echo "✅ Import verification: resource now in state"
+          else
+            echo "❌ Import verification failed: resource not in state"
+            echo "This may cause the apply to fail"
           fi
         fi
       working-directory: ./terraform
-      continue-on-error: true
+      continue-on-error: false
 
     - name: Terraform Apply
       run: |
@@ -235,7 +250,7 @@ jobs:
     - name: Deploy Frontend to S3
       run: |
         aws s3 sync frontend/ s3://${{ steps.terraform-output.outputs.frontend_bucket }} --delete
-        aws s3 cp frontend/index.html s3://${{ steps.terraform-output.outputs.frontend_bucket }}/index.html --cache-control "no-cache"
+        aws s3 cp frontend/index.html s3://${{ steps.terraform-output.outputs.frontend_bucket }}/index.html --cache-control "no-cache"e"
 
     - name: Production Health Check
       run: |
