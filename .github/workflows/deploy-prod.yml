@@ -191,9 +191,25 @@ jobs:
 
     - name: Import Existing DB Subnet Group
       run: |
-        echo "🔍 Importing existing DB subnet group if needed..."
-        # Try to import the existing DB subnet group
-        terraform import aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group 2>/dev/null || echo "Import completed or resource already managed"
+        echo "🔍 Checking if DB subnet group needs to be imported..."
+        
+        # Check if resource exists in state
+        if terraform state show aws_db_subnet_group.main >/dev/null 2>&1; then
+          echo "✅ DB subnet group already in terraform state"
+        else
+          echo "🔄 Importing existing DB subnet group to terraform state..."
+          terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group || {
+            echo "⚠️ Import failed, trying without variables..."
+            terraform import aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group || echo "Import failed - continuing anyway"
+          }
+          
+          # Verify import worked
+          if terraform state show aws_db_subnet_group.main >/dev/null 2>&1; then
+            echo "✅ Import successful"
+          else
+            echo "❌ Import failed - resource not in state"
+          fi
+        fi
       working-directory: ./terraform
       continue-on-error: true
 
