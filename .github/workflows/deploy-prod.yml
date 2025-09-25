@@ -59,10 +59,21 @@ jobs:
     - name: Package Lambda functions
       run: |
         cd backend
+        # Create zip files with consistent timestamps to avoid hash changes
         zip -r ../terraform/submit_cv.zip submit_cv.py
         zip -r ../terraform/list_applications.zip list_applications.py
         zip -r ../terraform/get_application.zip get_application.py
         zip -r ../terraform/admin_login.zip admin_login.py
+        
+        # Set consistent timestamp to avoid hash changes between jobs
+        touch -t 202401010000 ../terraform/*.zip
+
+    - name: Upload Lambda Packages
+      uses: actions/upload-artifact@v4
+      with:
+        name: lambda-packages
+        path: terraform/*.zip
+        retention-days: 1
 
     - name: Run Security Scan
       run: |
@@ -152,13 +163,11 @@ jobs:
         cd backend
         pip install -r requirements.txt -t .
 
-    - name: Package Lambda functions
-      run: |
-        cd backend
-        zip -r ../terraform/submit_cv.zip submit_cv.py
-        zip -r ../terraform/list_applications.zip list_applications.py
-        zip -r ../terraform/get_application.zip get_application.py
-        zip -r ../terraform/admin_login.zip admin_login.py
+    - name: Download Lambda Packages
+      uses: actions/download-artifact@v4
+      with:
+        name: lambda-packages
+        path: terraform/
 
     - name: Terraform Init
       run: |
@@ -179,6 +188,14 @@ jobs:
       with:
         name: terraform-plan-prod
         path: terraform/
+
+    - name: Import Existing DB Subnet Group
+      run: |
+        echo "🔍 Importing existing DB subnet group if needed..."
+        # Try to import the existing DB subnet group
+        terraform import aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group 2>/dev/null || echo "Import completed or resource already managed"
+      working-directory: ./terraform
+      continue-on-error: true
 
     - name: Terraform Apply
       run: |
