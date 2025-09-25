@@ -54,7 +54,7 @@ resource "aws_subnet" "private" {
 
 # NAT Gateway
 resource "aws_eip" "nat" {
-  count = 2
+  count = var.nat_gateway_count
 
   domain     = "vpc"
   depends_on = [aws_internet_gateway.main]
@@ -65,7 +65,7 @@ resource "aws_eip" "nat" {
 }
 
 resource "aws_nat_gateway" "main" {
-  count = 2
+  count = var.nat_gateway_count
 
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
@@ -92,7 +92,7 @@ resource "aws_route_table" "public" {
 }
 
 resource "aws_route_table" "private" {
-  count = 2
+  count = var.nat_gateway_count
 
   vpc_id = aws_vpc.main.id
 
@@ -115,8 +115,9 @@ resource "aws_route_table_association" "public" {
 }
 
 resource "aws_route_table_association" "private" {
-  count = 2
+  count = length(aws_subnet.private)
 
-  subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private[count.index].id
+  subnet_id = aws_subnet.private[count.index].id
+  # If only 1 NAT, associate all private subnets to the single private route table (index 0)
+  route_table_id = aws_route_table.private[min(count.index, length(aws_route_table.private) - 1)].id
 }

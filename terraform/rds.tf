@@ -7,6 +7,11 @@ resource "aws_db_subnet_group" "main" {
   tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-db-subnet-group"
   })
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [name]
+  }
 }
 
 # Optional: reference an existing DB subnet group by name
@@ -57,6 +62,11 @@ resource "aws_db_parameter_group" "main" {
   }
 
   tags = local.common_tags
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [name]
+  }
 }
 
 # RDS Instance
@@ -138,6 +148,11 @@ resource "aws_iam_role" "rds_monitoring" {
   })
 
   tags = local.common_tags
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [name]
+  }
 }
 
 # Attach the RDS monitoring policy

@@ -34,6 +34,11 @@ resource "aws_iam_role" "lambda" {
   })
 
   tags = local.common_tags
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [name]
+  }
 }
 
 # IAM policy for Lambda functions
@@ -90,6 +95,11 @@ resource "aws_cloudwatch_log_group" "submit_cv" {
   retention_in_days = var.environment == "prod" ? 14 : 7
 
   tags = local.common_tags
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [name]
+  }
 }
 
 resource "aws_cloudwatch_log_group" "list_applications" {
@@ -97,6 +107,11 @@ resource "aws_cloudwatch_log_group" "list_applications" {
   retention_in_days = var.environment == "prod" ? 14 : 7
 
   tags = local.common_tags
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [name]
+  }
 }
 
 resource "aws_cloudwatch_log_group" "get_application" {
@@ -104,6 +119,11 @@ resource "aws_cloudwatch_log_group" "get_application" {
   retention_in_days = var.environment == "prod" ? 14 : 7
 
   tags = local.common_tags
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [name]
+  }
 }
 
 # Lambda function for CV submission

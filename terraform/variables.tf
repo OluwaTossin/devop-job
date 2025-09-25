@@ -146,3 +146,9 @@ locals {
     ManagedBy   = "Terraform"
   }, var.common_tags)
 }
+
+variable "nat_gateway_count" {
+  description = "Number of NAT gateways to create (1 for dev to save cost, 2 for prod for HA)"
+  type        = number
+  default     = 1
+}

@@ -91,6 +91,62 @@ jobs:
       run: terraform validate -no-color
       working-directory: ./terraform
 
+    - name: Import existing dev resources (best-effort)
+      run: |
+        set -e
+        echo "Importing known pre-existing dev resources to avoid AlreadyExists errors..."
+        cd terraform
+
+        # Secrets Manager secret
+        SECRET_NAME="devops-job-portal-dev-admin-credentials"
+        if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" >/dev/null 2>&1; then
+          terraform state show aws_secretsmanager_secret.admin_credentials >/dev/null 2>&1 || terraform import aws_secretsmanager_secret.admin_credentials "$SECRET_NAME" || true
+        fi
+
+        # IAM Roles
+        for ROLE in \
+          devops-job-portal-dev-admin-login-lambda \
+          devops-job-portal-dev-api-gateway-cloudwatch \
+          devops-job-portal-dev-lambda-role \
+          devops-job-portal-dev-rds-monitoring-role
+        do
+          aws iam get-role --role-name "$ROLE" >/dev/null 2>&1 || continue
+          case "$ROLE" in
+            *admin-login-lambda) terraform state show aws_iam_role.admin_login_lambda >/dev/null 2>&1 || terraform import aws_iam_role.admin_login_lambda "$ROLE" || true ;;
+            *api-gateway-cloudwatch) terraform state show aws_iam_role.api_gateway_cloudwatch >/dev/null 2>&1 || terraform import aws_iam_role.api_gateway_cloudwatch "$ROLE" || true ;;
+            *lambda-role) terraform state show aws_iam_role.lambda >/dev/null 2>&1 || terraform import aws_iam_role.lambda "$ROLE" || true ;;
+            *rds-monitoring-role) terraform state show aws_iam_role.rds_monitoring >/dev/null 2>&1 || terraform import aws_iam_role.rds_monitoring "$ROLE" || true ;;
+          esac
+        done
+
+        # CloudWatch Log Groups
+        for LG in \
+          /aws/lambda/devops-job-portal-dev-admin-login \
+          /aws/lambda/devops-job-portal-dev-submit-cv \
+          /aws/lambda/devops-job-portal-dev-list-applications \
+          /aws/lambda/devops-job-portal-dev-get-application \
+          /aws/apigateway/devops-job-portal-dev
+        do
+          aws logs describe-log-groups --log-group-name-prefix "$LG" --limit 1 | grep -q 'logGroupName' || continue
+          case "$LG" in
+            */admin-login) terraform state show aws_cloudwatch_log_group.admin_login >/dev/null 2>&1 || terraform import aws_cloudwatch_log_group.admin_login "$LG" || true ;;
+            */submit-cv) terraform state show aws_cloudwatch_log_group.submit_cv >/dev/null 2>&1 || terraform import aws_cloudwatch_log_group.submit_cv "$LG" || true ;;
+            */list-applications) terraform state show aws_cloudwatch_log_group.list_applications >/dev/null 2>&1 || terraform import aws_cloudwatch_log_group.list_applications "$LG" || true ;;
+            */get-application) terraform state show aws_cloudwatch_log_group.get_application >/dev/null 2>&1 || terraform import aws_cloudwatch_log_group.get_application "$LG" || true ;;
+            */dev) terraform state show aws_cloudwatch_log_group.api_gateway >/dev/null 2>&1 || terraform import aws_cloudwatch_log_group.api_gateway "$LG" || true ;;
+          esac
+        done
+
+        # S3 Buckets
+        for B in devops-job-portal-dev-frontend devops-job-portal-dev-cv-storage; do
+          aws s3api head-bucket --bucket "$B" >/dev/null 2>&1 || continue
+          case "$B" in
+            *-frontend) terraform state show aws_s3_bucket.frontend >/dev/null 2>&1 || terraform import aws_s3_bucket.frontend "$B" || true ;;
+            *-cv-storage) terraform state show aws_s3_bucket.cv_storage >/dev/null 2>&1 || terraform import aws_s3_bucket.cv_storage "$B" || true ;;
+          esac
+        done
+      shell: bash
+
     - name: Terraform Plan
       id: plan
       run: |

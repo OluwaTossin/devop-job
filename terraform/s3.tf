@@ -3,6 +3,11 @@ resource "aws_s3_bucket" "frontend" {
   bucket = "${local.name_prefix}-frontend"
 
   tags = local.common_tags
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [bucket]
+  }
 }
 
 # S3 bucket versioning
@@ -60,6 +65,11 @@ resource "aws_s3_bucket" "cv_storage" {
   bucket = "${local.name_prefix}-cv-storage"
 
   tags = local.common_tags
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [bucket]
+  }
 }
 
 # S3 bucket versioning for CV storage

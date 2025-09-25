@@ -4,6 +4,13 @@ resource "aws_secretsmanager_secret" "admin_credentials" {
   description = "Admin login credentials for DevOps Job Portal"
 
   tags = local.common_tags
+
+  lifecycle {
+    # If the secret already exists outside of state (e.g., from a previous run),
+    # we will import it via CI before planning. Avoid accidental destroy/replace.
+    prevent_destroy = true
+    ignore_changes  = [name, description]
+  }
 }
 
 resource "aws_secretsmanager_secret_version" "admin_credentials" {
@@ -77,6 +84,12 @@ resource "aws_cloudwatch_log_group" "admin_login" {
   retention_in_days = 7 # Fixed to valid CloudWatch retention period
 
   tags = local.common_tags
+
+  lifecycle {
+    # Log groups may pre-exist if Lambda ran previously; avoid replacement
+    prevent_destroy = true
+    ignore_changes  = [name]
+  }
 }
 
 # Lambda function for admin login

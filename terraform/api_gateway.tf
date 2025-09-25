@@ -313,6 +313,11 @@ resource "aws_iam_role" "api_gateway_cloudwatch" {
   })
 
   tags = local.common_tags
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [name]
+  }
 }
 
 # Attach the managed policy for API Gateway to push to CloudWatch
@@ -332,4 +337,9 @@ resource "aws_cloudwatch_log_group" "api_gateway" {
   retention_in_days = var.environment == "prod" ? 14 : 7
 
   tags = local.common_tags
+
+  lifecycle {
+    prevent_destroy = true
+    ignore_changes  = [name]
+  }
 }
