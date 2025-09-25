@@ -149,6 +149,12 @@ jobs:
         # 8) RDS DB Instance (best effort)
         DB_INSTANCE_ID="devops-job-portal-dev-database"
         terraform state show aws_db_instance.main >/dev/null 2>&1 || terraform import aws_db_instance.main "$DB_INSTANCE_ID" || true
+
+        # 9) Lambda permissions (avoid 409 on existing statement IDs)
+        terraform state show aws_lambda_permission.submit_cv >/dev/null 2>&1 || terraform import aws_lambda_permission.submit_cv devops-job-portal-dev-submit-cv/AllowExecutionFromAPIGateway || true
+        terraform state show aws_lambda_permission.list_applications >/dev/null 2>&1 || terraform import aws_lambda_permission.list_applications devops-job-portal-dev-list-applications/AllowExecutionFromAPIGateway || true
+        terraform state show aws_lambda_permission.get_application >/dev/null 2>&1 || terraform import aws_lambda_permission.get_application devops-job-portal-dev-get-application/AllowExecutionFromAPIGateway || true
+        terraform state show aws_lambda_permission.admin_login >/dev/null 2>&1 || terraform import aws_lambda_permission.admin_login devops-job-portal-dev-admin-login/AllowExecutionFromAPIGateway || true
       shell: bash
 
     - name: Terraform Plan
@@ -437,6 +443,16 @@ jobs:
             terraform state show aws_db_instance.main | head -20 || true
           fi
         fi
+      working-directory: ./terraform
+
+    - name: Import existing Lambda permissions (prod)
+      run: |
+        echo "🔐 Importing existing Lambda permissions to avoid 409 conflicts (prod)..."
+        # Best-effort imports; ignore errors if not found
+        terraform state show aws_lambda_permission.submit_cv >/dev/null 2>&1 || terraform import aws_lambda_permission.submit_cv devops-job-portal-prod-submit-cv/AllowExecutionFromAPIGateway || true
+        terraform state show aws_lambda_permission.list_applications >/dev/null 2>&1 || terraform import aws_lambda_permission.list_applications devops-job-portal-prod-list-applications/AllowExecutionFromAPIGateway || true
+        terraform state show aws_lambda_permission.get_application >/dev/null 2>&1 || terraform import aws_lambda_permission.get_application devops-job-portal-prod-get-application/AllowExecutionFromAPIGateway || true
+        terraform state show aws_lambda_permission.admin_login >/dev/null 2>&1 || terraform import aws_lambda_permission.admin_login devops-job-portal-prod-admin-login/AllowExecutionFromAPIGateway || true
       working-directory: ./terraform
 
     - name: Ensure DB subnet group not tracked (prod)
