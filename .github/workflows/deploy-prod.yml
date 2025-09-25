@@ -193,36 +193,50 @@ jobs:
       run: |
         echo "🔍 Checking if DB subnet group needs to be imported..."
         
-        # Check if resource exists in state
+        # Define the expected DB subnet group name
+        DB_SUBNET_GROUP_NAME="devops-job-portal-prod-db-subnet-group"
+        
+        # Check if resource exists in Terraform state
         if terraform state show aws_db_subnet_group.main >/dev/null 2>&1; then
           echo "✅ DB subnet group already in terraform state"
+          terraform state show aws_db_subnet_group.main | head -10
         else
-          echo "🔄 Importing existing DB subnet group to terraform state..."
+          echo "❌ DB subnet group NOT in terraform state, checking AWS..."
           
-          # First, verify the resource exists in AWS
-          if aws rds describe-db-subnet-groups --db-subnet-group-name devops-job-portal-prod-db-subnet-group >/dev/null 2>&1; then
-            echo "✅ DB subnet group exists in AWS"
+          # Verify the resource exists in AWS first
+          if aws rds describe-db-subnet-groups --db-subnet-group-name "$DB_SUBNET_GROUP_NAME" >/dev/null 2>&1; then
+            echo "✅ DB subnet group '$DB_SUBNET_GROUP_NAME' exists in AWS"
             
-            # Try import with variables first
-            if terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group; then
+            # Show all current state resources for debugging
+            echo "📋 Current Terraform state resources:"
+            terraform state list
+            
+            # Try import with retries
+            echo "🔄 Attempting to import DB subnet group..."
+            
+            if terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_db_subnet_group.main "$DB_SUBNET_GROUP_NAME"; then
               echo "✅ Import successful with variables"
-            elif terraform import aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group; then
+            elif terraform import aws_db_subnet_group.main "$DB_SUBNET_GROUP_NAME"; then  
               echo "✅ Import successful without variables"
             else
-              echo "❌ Import failed - resource may be managed elsewhere"
-              # Show current state for debugging
-              terraform state list | grep subnet || echo "No subnet resources in state"
+              echo "❌ All import attempts failed"
+              echo "This deployment will likely fail due to resource conflict"
+              exit 1
             fi
+            
+            # Final verification with detailed output
+            if terraform state show aws_db_subnet_group.main >/dev/null 2>&1; then
+              echo "✅ Import verification: resource successfully imported"
+              echo "📋 Imported resource details:"
+              terraform state show aws_db_subnet_group.main | head -5
+            else
+              echo "❌ Import verification failed: resource still not in state"
+              exit 1
+            fi
+            
           else
-            echo "❌ DB subnet group does not exist in AWS"
-          fi
-          
-          # Final verification
-          if terraform state show aws_db_subnet_group.main >/dev/null 2>&1; then
-            echo "✅ Import verification: resource now in state"
-          else
-            echo "❌ Import verification failed: resource not in state"
-            echo "This may cause the apply to fail"
+            echo "❌ DB subnet group '$DB_SUBNET_GROUP_NAME' does not exist in AWS"
+            echo "Terraform will create it during apply"
           fi
         fi
       working-directory: ./terraform
@@ -250,7 +264,7 @@ jobs:
     - name: Deploy Frontend to S3
       run: |
         aws s3 sync frontend/ s3://${{ steps.terraform-output.outputs.frontend_bucket }} --delete
-        aws s3 cp frontend/index.html s3://${{ steps.terraform-output.outputs.frontend_bucket }}/index.html --cache-control "no-cache"e"
+        aws s3 cp frontend/index.html s3://${{ steps.terraform-output.outputs.frontend_bucket }}/index.html --cache-control "no-cache"
 
     - name: Production Health Check
       run: |
