@@ -119,6 +119,43 @@ jobs:
       run: terraform validate -no-color
       working-directory: ./terraform
 
+    # Ensure existing DB instance is imported into state before planning
+    - name: Import Existing DB Instance
+      run: |
+        echo "🔍 Ensuring DB instance is in Terraform state before planning..."
+        DB_INSTANCE_ID="devops-job-portal-prod-database"
+
+        if terraform state show aws_db_instance.main >/dev/null 2>&1; then
+          echo "✅ DB instance already tracked in Terraform state"
+          terraform state show aws_db_instance.main | head -20 || true
+        else
+          echo "ℹ️  DB instance not in state; attempting Terraform import..."
+          set +e
+          IMPORT_OUTPUT=$(terraform import aws_db_instance.main "$DB_INSTANCE_ID" 2>&1)
+          IMPORT_CODE=$?
+          set -e
+          echo "$IMPORT_OUTPUT" | tail -n +1 | sed 's/^/terraform import: /'
+
+          if [ $IMPORT_CODE -eq 0 ]; then
+            echo "✅ DB instance import successful"
+          else
+            if echo "$IMPORT_OUTPUT" | grep -qiE 'DBInstanceNotFound|not.?found|NoSuchEntity'; then
+              echo "ℹ️  DB instance not found in AWS; Terraform will create it if needed"
+            else
+              echo "❌ Import failed for a non-NotFound reason (likely permissions or conflict)."
+              echo "⛔ Aborting to avoid generating a bad plan that will fail during apply."
+              exit 1
+            fi
+          fi
+
+          if terraform state show aws_db_instance.main >/dev/null 2>&1; then
+            echo "📋 Post-import verification:"
+            terraform state show aws_db_instance.main | head -20 || true
+          fi
+        fi
+      working-directory: ./terraform
+      continue-on-error: false
+
     # Ensure state does not track DB subnet group when using an existing one
     - name: Ensure DB subnet group not tracked in state
       if: env.USE_EXISTING_DB_SUBNET_GROUP == 'true'
