@@ -121,10 +121,10 @@ jobs:
         terraform state show aws_s3_bucket.frontend   >/dev/null 2>&1 || terraform import aws_s3_bucket.frontend   devops-job-portal-dev-frontend || true
         terraform state show aws_s3_bucket.cv_storage >/dev/null 2>&1 || terraform import aws_s3_bucket.cv_storage devops-job-portal-dev-cv-storage || true
 
-  # 5) RDS DB Subnet Group and Parameter Group
-  # Using existing DB subnet group in dev; ensure not tracked to avoid cross-VPC modify
-  terraform state show aws_db_subnet_group.main >/dev/null 2>&1 && terraform state rm aws_db_subnet_group.main || true
-  terraform state show aws_db_subnet_group.main[0] >/dev/null 2>&1 && terraform state rm aws_db_subnet_group.main["0"] || true
+        # 5) RDS DB Subnet Group and Parameter Group
+        # Using existing DB subnet group in dev; ensure not tracked to avoid cross-VPC modify
+        terraform state show aws_db_subnet_group.main >/dev/null 2>&1 && terraform state rm aws_db_subnet_group.main || true
+        terraform state show aws_db_subnet_group.main[0] >/dev/null 2>&1 && terraform state rm aws_db_subnet_group.main["0"] || true
         terraform state show aws_db_parameter_group.main >/dev/null 2>&1 || terraform import aws_db_parameter_group.main devops-job-portal-dev-postgres-params || true
 
         # 6) NAT EIP and NAT Gateway (index 0) via tag discovery to avoid EIP limits
@@ -549,7 +549,7 @@ jobs:
         if curl -f "${{ steps.terraform-output-prod.outputs.api_gateway_url }}/applications" >/dev/null 2>&1; then
           echo "✅ API Gateway is responding"
         else
-          echo "⚠️ API Gateway health check failed"
+          echo "⚠️ Frontend health check failed"
         fi
         if curl -f "http://${{ steps.terraform-output-prod.outputs.frontend_url }}" >/dev/null 2>&1; then
           echo "✅ Frontend is accessible"
