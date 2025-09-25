@@ -180,24 +180,10 @@ jobs:
         name: terraform-plan-prod
         path: terraform/
 
-    - name: Import Existing Resources
-      run: |
-        echo "🔍 Importing existing resources if needed..."
-        
-        # Import DB subnet group if it exists
-        if aws rds describe-db-subnet-groups --db-subnet-group-name devops-job-portal-prod-db-subnet-group >/dev/null 2>&1; then
-          echo "Importing existing DB subnet group..."
-          terraform import -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" aws_db_subnet_group.main devops-job-portal-prod-db-subnet-group || echo "Import skipped (may already be in state)"
-        fi
-        
-        echo "✅ Resource import completed"
-      working-directory: ./terraform
-      continue-on-error: true
-
     - name: Terraform Apply
       run: |
         echo "🚀 Applying Terraform changes to production..."
-        terraform apply -auto-approve -var="environment=prod" -var="db_password=${{ secrets.PROD_DB_PASSWORD }}" tfplan
+        terraform apply -auto-approve tfplan
         echo "✅ Terraform deployment completed"
       working-directory: ./terraform
 
