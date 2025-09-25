@@ -96,6 +96,43 @@ cd ../frontend
 aws s3 sync . s3://devops-job-portal-dev-frontend --delete
 ```
 
+## 🧩 CI/CD: Production Deployment (GitHub Actions)
+
+This repository ships with a production deployment workflow at `.github/workflows/deploy-prod.yml`.
+
+Key characteristics
+- Two-stage pipeline with artifacts:
+  - terraform-plan: builds Lambda packages deterministically, runs Terraform init/validate, performs safe imports for existing prod resources, and produces a saved plan artifact (`tfplan`).
+  - deploy: downloads the `tfplan` and applies to production; then updates the frontend in S3 and runs basic health checks.
+- Deterministic Lambda packaging: zips are built with stable timestamps to prevent hash drift between jobs.
+- State backend: S3 bucket `terraform-state-devops-job-portal` with DynamoDB table `terraform-locks` (eu‑west‑1).
+- Plan/apply separation: the saved plan is applied without re-planning in the deploy job.
+
+Required GitHub Secrets
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `PROD_DB_PASSWORD` (used as `-var db_password` at plan time)
+
+Workflow-level environment variables
+- `AWS_REGION`: `eu-west-1`
+- `TERRAFORM_VERSION`: pinned to ensure reproducibility
+- `USE_EXISTING_DB_SUBNET_GROUP`: `"true"` in prod to avoid re-creating the DB subnet group
+- `EXISTING_DB_SUBNET_GROUP_NAME`: `"devops-job-portal-prod-db-subnet-group"`
+
+Terraform prod behavior captured in the workflow
+- Uses an existing DB subnet group in prod via a Terraform data source (no creation in prod).
+- Imports an existing RDS instance into state before planning, if present, to avoid `AlreadyExists` errors.
+- Protects against cross‑VPC changes by ignoring `vpc_security_group_ids` on an imported DB instance (prevents invalid cross‑VPC modifications).
+- Uploads plan as an artifact and applies it in a separate job.
+
+Recommended hardening (optional)
+- Replace static AWS keys with GitHub OIDC + an AssumeRole in AWS (least privilege). This removes long‑lived secrets from GitHub and tightens security.
+- Add CodeQL and tfsec/checkov SARIF reporting for security posture visibility.
+- Enable environment protection rules on the `production` environment for manual approval.
+
+How to trigger
+- Push to `main` or use the manual “Run workflow” (with the confirm text).
+
 ## 📁 Project Structure
 
 ```
@@ -223,6 +260,21 @@ applications (
 ## 🆘 Troubleshooting
 
 ### Common Issues
+
+**Terraform: RDS DBSubnetGroupAlreadyExists**
+- Cause: A DB subnet group already exists in production but wasn’t tracked by state.
+- Resolution in this repo: prod workflow uses `use_existing_db_subnet_group = true` and references the existing name, avoiding creation in prod.
+
+**Terraform: DBInstanceAlreadyExists**
+- Cause: The RDS instance exists in prod but wasn’t in Terraform state.
+- Resolution in this repo: the plan job attempts a one‑time `terraform import` for the DB instance before planning.
+
+**Terraform: InvalidParameterCombination (DB SG and instance in different VPCs)**
+- Cause: Attempting to attach a security group from a different VPC to an existing DB instance.
+- Resolution in this repo: we ignore changes to `vpc_security_group_ids` on the imported DB instance to avoid illegal cross‑VPC modifications. For long‑term alignment, either:
+  - Use the existing prod VPC/subnets/SGs for Lambda (data sources in Terraform), or
+  - Migrate the DB into the Terraform‑managed VPC, or
+  - Add VPC peering/TGW and open SG rules appropriately.
 
 **Lambda Function Errors:**
 ```bash
