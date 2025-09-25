@@ -206,8 +206,18 @@ jobs:
     - name: Get Terraform Outputs
       id: terraform-output
       run: |
-        echo "frontend_bucket=$(terraform output -raw frontend_bucket_name)" >> $GITHUB_OUTPUT
-        echo "api_gateway_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+        set -e
+        FRONTEND_BUCKET=$(terraform output -raw frontend_bucket_name)
+        API_URL=$(terraform output -raw api_gateway_url)
+        # Try to read a website URL output; otherwise build the standard S3 website URL
+        if terraform output -raw frontend_website_url >/dev/null 2>&1; then
+          FRONTEND_URL=$(terraform output -raw frontend_website_url)
+        else
+          FRONTEND_URL="http://${FRONTEND_BUCKET}.s3-website-${AWS_REGION}.amazonaws.com"
+        fi
+        echo "frontend_bucket=${FRONTEND_BUCKET}" >> $GITHUB_OUTPUT
+        echo "api_gateway_url=${API_URL}" >> $GITHUB_OUTPUT
+        echo "frontend_url=${FRONTEND_URL}" >> $GITHUB_OUTPUT
       working-directory: ./terraform
 
     - name: Update Frontend Configuration
@@ -223,6 +233,12 @@ jobs:
       run: |
         echo "CloudFront invalidation would go here if CDN is configured"
       continue-on-error: true
+
+    - name: Publish Dev URLs
+      run: |
+        echo "✅ Development deployment successful!" | tee -a $GITHUB_STEP_SUMMARY
+        echo "Frontend URL: ${{ steps.terraform-output.outputs.frontend_url }}" | tee -a $GITHUB_STEP_SUMMARY
+        echo "API URL: ${{ steps.terraform-output.outputs.api_gateway_url }}" | tee -a $GITHUB_STEP_SUMMARY
 
   test:
     name: Dev Smoke Tests
@@ -480,8 +496,8 @@ jobs:
     - name: Notify production deployment success
       if: success()
       run: |
-        echo "🎉 Production deployment successful!"
-        echo "Frontend URL: http://${{ steps.terraform-output-prod.outputs.frontend_url }}"
-        echo "API URL: ${{ steps.terraform-output-prod.outputs.api_gateway_url }}"
-        echo "Deployed by: @${{ github.actor }}"
-        echo "Commit: ${{ github.sha }}"
+        echo "🎉 Production deployment successful!" | tee -a $GITHUB_STEP_SUMMARY
+        echo "Frontend URL: http://${{ steps.terraform-output-prod.outputs.frontend_url }}" | tee -a $GITHUB_STEP_SUMMARY
+        echo "API URL: ${{ steps.terraform-output-prod.outputs.api_gateway_url }}" | tee -a $GITHUB_STEP_SUMMARY
+        echo "Deployed by: @${{ github.actor }}" | tee -a $GITHUB_STEP_SUMMARY
+        echo "Commit: ${{ github.sha }}" | tee -a $GITHUB_STEP_SUMMARY
