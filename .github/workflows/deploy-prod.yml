@@ -129,20 +129,32 @@ jobs:
           echo "✅ DB subnet group already tracked in Terraform state"
           terraform state show aws_db_subnet_group.main | head -10 || true
         else
-          echo "ℹ️  DB subnet group not in state; checking AWS for existing resource..."
-          if aws rds describe-db-subnet-groups --db-subnet-group-name "$DB_SUBNET_GROUP_NAME" >/dev/null 2>&1; then
-            echo "✅ Found existing DB subnet group in AWS: $DB_SUBNET_GROUP_NAME"
-            echo "🔄 Importing into Terraform state..."
-            if terraform import aws_db_subnet_group.main "$DB_SUBNET_GROUP_NAME"; then
-              echo "✅ Import successful"
+          echo "ℹ️  DB subnet group not in state; attempting Terraform import (no AWS CLI dependency)..."
+          
+          # Attempt import and capture stderr for decision making
+          set +e
+          IMPORT_OUTPUT=$(terraform import aws_db_subnet_group.main "$DB_SUBNET_GROUP_NAME" 2>&1)
+          IMPORT_CODE=$?
+          set -e
+          echo "$IMPORT_OUTPUT" | tail -n +1 | sed 's/^/terraform import: /'
+          
+          if [ $IMPORT_CODE -eq 0 ]; then
+            echo "✅ Import successful"
+          else
+            # If it's clearly a NotFound error, continue and let Terraform create it
+            if echo "$IMPORT_OUTPUT" | grep -qiE 'DBSubnetGroupNotFound|not.?found|NoSuchEntity'; then
+              echo "ℹ️  DB subnet group not found in AWS; Terraform will create it if needed"
             else
-              echo "❌ Import failed; cannot safely continue with plan"
+              echo "❌ Import failed for a non-NotFound reason (likely permissions or conflict)."
+              echo "⛔ Aborting to avoid generating a bad plan that will fail during apply."
               exit 1
             fi
+          fi
+          
+          # Post-import verification if import succeeded
+          if terraform state show aws_db_subnet_group.main >/dev/null 2>&1; then
             echo "📋 Post-import verification:"
             terraform state show aws_db_subnet_group.main | head -10 || true
-          else
-            echo "✅ No existing DB subnet group in AWS; Terraform may create it"
           fi
         fi
       working-directory: ./terraform
