@@ -19,7 +19,8 @@ The DevOps Job Portal is built using a modern 3-tier architecture on AWS:
 - **Functions**: 
   - `submit_cv`: Handle job application submissions
   - `list_applications`: Retrieve applications with pagination/filtering
-  - `get_application`: Fetch individual application details
+  - `get_application`: Fetch individual application details with CV download URLs
+  - `delete_application`: Remove applications and associated CV files
   - `admin_login`: Secure admin authentication
 
 ### **Data Tier**
@@ -40,7 +41,10 @@ The DevOps Job Portal is built using a modern 3-tier architecture on AWS:
 - ✅ Secure JWT-based authentication
 - ✅ Application management dashboard
 - ✅ Pagination and filtering
-- ✅ Individual application details
+- ✅ Individual application details with modal view
+- ✅ CV download functionality with presigned URLs
+- ✅ Application deletion with confirmation dialog
+- ✅ Complete cleanup (database + S3 file removal)
 - ✅ Session management with auto-logout
 
 ### **Security Features**
@@ -127,6 +131,7 @@ Triggering
 devop-job/
 ├── backend/                    # Lambda functions
 │   ├── admin_login.py         # Admin authentication
+│   ├── delete_application.py  # Application deletion
 │   ├── get_application.py     # Application retrieval  
 │   ├── list_applications.py   # Application listing
 │   └── submit_cv.py           # Application submission
@@ -155,7 +160,9 @@ devop-job/
 ### Admin Endpoints 🔒
 - `POST /admin/login` - Admin authentication
 - `GET /applications` - List applications (paginated)
-- `GET /applications/{id}` - Get application details
+- `GET /applications/{id}` - Get application details with CV download URL
+- `DELETE /applications/{id}` - Delete application and associated files
+- `OPTIONS /applications/{id}` - CORS preflight for application operations
 
 ### Query Parameters
 - `page`: Page number (default: 1)
