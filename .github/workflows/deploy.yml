@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ dev ]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   AWS_REGION: eu-west-1
   TERRAFORM_VERSION: 1.6.0
@@ -21,6 +25,8 @@ jobs:
     name: Terraform Plan (Development)
     runs-on: ubuntu-latest
     # No environment gating for dev to keep pipeline simple
+    outputs:
+      has_changes: ${{ steps.detect_changes.outputs.has_changes }}
     
     steps:
     - name: Checkout
@@ -42,6 +48,8 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
+        cache: 'pip'
+        cache-dependency-path: backend/requirements.txt
 
     - name: Install Python dependencies
       run: |
@@ -83,6 +91,14 @@ jobs:
           -backend-config="region=${{ env.AWS_REGION }}" \
           -backend-config="dynamodb_table=terraform-locks"
       working-directory: ./terraform
+
+    - name: Cache Terraform providers (dev)
+      uses: actions/cache@v4
+      with:
+        path: terraform/.terraform
+        key: ${{ runner.os }}-tf-${{ env.TERRAFORM_VERSION }}-${{ hashFiles('terraform/.terraform.lock.hcl') }}
+        restore-keys: |
+          ${{ runner.os }}-tf-${{ env.TERRAFORM_VERSION }}-
 
     - name: Terraform Workspace
       id: workspace
@@ -153,18 +169,30 @@ jobs:
 
       shell: bash
 
-    - name: Terraform Plan
-      id: plan
+    - name: Terraform Plan (detailed exit code)
+      id: detect_changes
       run: |
-        terraform plan -no-color \
+        set +e
+        terraform plan -no-color -detailed-exitcode \
           -var="environment=dev" \
           -var="use_existing_db_subnet_group=${{ env.USE_EXISTING_DB_SUBNET_GROUP_DEV }}" \
           -var="existing_db_subnet_group_name=${{ env.EXISTING_DB_SUBNET_GROUP_NAME_DEV }}" \
           -out=tfplan
+        CODE=$?
+        echo "exit_code=$CODE"
+        if [ "$CODE" -eq 0 ]; then
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+          exit 0
+        elif [ "$CODE" -eq 2 ]; then
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+          exit 0
+        else
+          exit 1
+        fi
       working-directory: ./terraform
-      continue-on-error: true
 
     - name: Upload Plan
+      if: steps.detect_changes.outputs.has_changes == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: terraform-plan-dev
@@ -202,7 +230,7 @@ jobs:
           })
 
     - name: Terraform Plan Status
-      if: steps.plan.outcome == 'failure'
+      if: failure()
       run: exit 1
 
   deploy:
@@ -210,7 +238,7 @@ jobs:
     needs: terraform-plan
     runs-on: ubuntu-latest
     # No environment gating for dev to keep pipeline simple
-    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    if: needs.terraform-plan.outputs.has_changes == 'true' && github.ref == 'refs/heads/dev' && github.event_name == 'push'
     
     steps:
     - name: Checkout
@@ -232,6 +260,8 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
+        cache: 'pip'
+        cache-dependency-path: backend/requirements.txt
 
     - name: Install Python dependencies
       run: |
@@ -252,6 +282,14 @@ jobs:
           -backend-config="region=${{ env.AWS_REGION }}" \
           -backend-config="dynamodb_table=terraform-locks"
       working-directory: ./terraform
+
+    - name: Cache Terraform providers (dev)
+      uses: actions/cache@v4
+      with:
+        path: terraform/.terraform
+        key: ${{ runner.os }}-tf-${{ env.TERRAFORM_VERSION }}-${{ hashFiles('terraform/.terraform.lock.hcl') }}
+        restore-keys: |
+          ${{ runner.os }}-tf-${{ env.TERRAFORM_VERSION }}-
 
     - name: Terraform Workspace
       run: |
@@ -310,7 +348,7 @@ jobs:
     name: Dev Smoke Tests
     needs: deploy
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    if: needs.deploy.result == 'success' && github.ref == 'refs/heads/dev' && github.event_name == 'push'
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -336,6 +374,14 @@ jobs:
           -backend-config="region=${{ env.AWS_REGION }}" \
           -backend-config="dynamodb_table=terraform-locks"
       working-directory: ./terraform
+
+    - name: Cache Terraform providers (dev)
+      uses: actions/cache@v4
+      with:
+        path: terraform/.terraform
+        key: ${{ runner.os }}-tf-${{ env.TERRAFORM_VERSION }}-${{ hashFiles('terraform/.terraform.lock.hcl') }}
+        restore-keys: |
+          ${{ runner.os }}-tf-${{ env.TERRAFORM_VERSION }}-
 
     - name: Terraform Workspace (dev)
       run: terraform workspace select dev
@@ -386,7 +432,7 @@ jobs:
     runs-on: ubuntu-latest
     # Gate even the planning behind production environment approval
     environment: production
-    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    if: needs.deploy.result == 'success' && needs.test.result == 'success' && github.ref == 'refs/heads/dev' && github.event_name == 'push'
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -422,6 +468,14 @@ jobs:
           -backend-config="region=${{ env.AWS_REGION }}" \
           -backend-config="dynamodb_table=terraform-locks"
       working-directory: ./terraform
+
+    - name: Cache Terraform providers (prod)
+      uses: actions/cache@v4
+      with:
+        path: terraform/.terraform
+        key: ${{ runner.os }}-tf-${{ env.TERRAFORM_VERSION }}-${{ hashFiles('terraform/.terraform.lock.hcl') }}
+        restore-keys: |
+          ${{ runner.os }}-tf-${{ env.TERRAFORM_VERSION }}-
 
     - name: Terraform Workspace (prod)
       run: |
@@ -503,7 +557,7 @@ jobs:
     needs: prod-plan
     runs-on: ubuntu-latest
     environment: production
-    if: github.ref == 'refs/heads/dev' && github.event_name == 'push'
+    if: needs.prod-plan.result == 'success' && github.ref == 'refs/heads/dev' && github.event_name == 'push'
     steps:
     - name: Checkout
       uses: actions/checkout@v4
@@ -534,6 +588,14 @@ jobs:
           -backend-config="region=${{ env.AWS_REGION }}" \
           -backend-config="dynamodb_table=terraform-locks"
       working-directory: ./terraform
+
+    - name: Cache Terraform providers (prod)
+      uses: actions/cache@v4
+      with:
+        path: terraform/.terraform
+        key: ${{ runner.os }}-tf-${{ env.TERRAFORM_VERSION }}-${{ hashFiles('terraform/.terraform.lock.hcl') }}
+        restore-keys: |
+          ${{ runner.os }}-tf-${{ env.TERRAFORM_VERSION }}-
 
     - name: Terraform Workspace (prod)
       run: terraform workspace select prod
