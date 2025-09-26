@@ -53,7 +53,8 @@ The DevOps Job Portal is built using a modern 3-tier architecture on AWS:
 
 ## 🌐 Live Demo
 
-**Website URL**: http://devops-job-portal-dev-frontend.s3-website-eu-west-1.amazonaws.com
+**Development Environment**: http://devops-job-portal-dev-frontend.s3-website-eu-west-1.amazonaws.com  
+**Production Environment**: http://devops-job-portal-prod-frontend.s3-website-eu-west-1.amazonaws.com
 
 **Admin Credentials**:
 - Username: `admin`

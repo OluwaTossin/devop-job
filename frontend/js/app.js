@@ -13,7 +13,17 @@
 
 // API Configuration - Placeholder replaced in CI per environment (dev/prod)
 // Do not change this placeholder manually; the GitHub Actions workflow replaces it with the actual API URL.
-const API_BASE_URL = 'https://8rq5va2dy8.execute-api.eu-west-1.amazonaws.com/dev';
+// Environment-aware API configuration
+const hostname = window.location.hostname;
+let API_BASE_URL;
+
+if (hostname.includes('prod')) {
+    // Production environment
+    API_BASE_URL = 'https://rta8dvqii9.execute-api.eu-west-1.amazonaws.com/prod';
+} else {
+    // Development environment (default)
+    API_BASE_URL = 'https://8rq5va2dy8.execute-api.eu-west-1.amazonaws.com/dev';
+}
 
 // Global application state
 let applications = [];
@@ -548,6 +558,9 @@ function displayApplications(applications) {
                         <i class="fas fa-download"></i> Download CV
                     </button>
                     ` : ''}
+                    <button class="btn-delete" onclick="deleteApplication('${app.id || app.application_id}', '${app.first_name} ${app.last_name}')">
+                        <i class="fas fa-trash"></i> Delete Application
+                    </button>
                 </div>
             </div>
         `;
@@ -556,35 +569,156 @@ function displayApplications(applications) {
 
 // View full application details
 async function viewFullApplication(applicationId) {
+    console.log('viewFullApplication called with ID:', applicationId);
+    console.log('API_BASE_URL:', API_BASE_URL);
+    
     try {
-        const response = await fetch(`${API_BASE_URL}/applications/${applicationId}`, {
+        const url = `${API_BASE_URL}/applications/${applicationId}`;
+        console.log('Fetching URL:', url);
+        
+        const response = await fetch(url, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
             }
         });
         
+        console.log('Response status:', response.status);
+        console.log('Response ok:', response.ok);
+        
         if (response.ok) {
             const application = await response.json();
+            console.log('Application data:', application);
             showApplicationModal(application);
         } else {
-            throw new Error('Failed to load application details');
+            const errorText = await response.text();
+            console.error('API Error Response:', errorText);
+            throw new Error(`Failed to load application details: ${response.status}`);
         }
     } catch (error) {
         console.error('Error loading application details:', error);
-        alert('Failed to load application details');
+        alert(`Failed to load application details: ${error.message}`);
     }
 }
 
 // Download CV
 async function downloadCV(applicationId) {
+    console.log('downloadCV called with ID:', applicationId);
+    console.log('API_BASE_URL:', API_BASE_URL);
+    
     try {
-        // This would typically generate a signed URL or direct download
-        // For now, we'll show an alert
-        alert(`CV download for application ${applicationId} would be implemented here.`);
+        // Get application details to retrieve CV download URL
+        const url = `${API_BASE_URL}/applications/${applicationId}`;
+        console.log('Fetching URL for CV download:', url);
+        
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        console.log('CV Download Response status:', response.status);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API Error Response:', errorText);
+            throw new Error(`Failed to fetch application details: ${response.status}`);
+        }
+
+        const application = await response.json();
+        console.log('Application data for CV download:', application);
+        
+        if (!application.cv_download_url) {
+            console.error('No cv_download_url in response');
+            alert('CV file not available for this application');
+            return;
+        }
+
+        console.log('CV Download URL:', application.cv_download_url);
+
+        // Create a temporary link element and trigger download
+        const link = document.createElement('a');
+        link.href = application.cv_download_url;
+        link.download = application.cv_file_name || `cv_${applicationId}.pdf`;
+        link.target = '_blank';
+        
+        console.log('Triggering download for:', link.download);
+        
+        // Append to body, click, and remove
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
     } catch (error) {
         console.error('Error downloading CV:', error);
-        alert('Failed to download CV');
+        alert(`Failed to download CV: ${error.message}`);
+    }
+}
+
+// Delete application
+async function deleteApplication(applicationId, applicantName) {
+    console.log('deleteApplication called with ID:', applicationId, 'Name:', applicantName);
+    console.log('API_BASE_URL:', API_BASE_URL);
+    
+    // Show confirmation dialog
+    const confirmDelete = confirm(
+        `Are you sure you want to delete the application from ${applicantName}?\n\n` +
+        `This action will:\n` +
+        `• Remove the application from the database\n` +
+        `• Delete the uploaded CV file\n` +
+        `• This action cannot be undone\n\n` +
+        `Click OK to confirm deletion, or Cancel to abort.`
+    );
+    
+    if (!confirmDelete) {
+        console.log('Delete cancelled by user');
+        return;
+    }
+    
+    try {
+        const url = `${API_BASE_URL}/applications/${applicationId}`;
+        console.log('Deleting at URL:', url);
+        
+        const response = await fetch(url, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            }
+        });
+        
+        console.log('Delete Response status:', response.status);
+        console.log('Delete Response ok:', response.ok);
+        
+        if (response.ok) {
+            const result = await response.json();
+            console.log('Delete result:', result);
+            
+            // Show success message
+            alert(`Application from ${applicantName} has been successfully deleted.`);
+            
+            // Refresh the applications list
+            await loadApplications();
+            
+        } else {
+            const errorText = await response.text();
+            console.error('Delete API Error Response:', errorText);
+            
+            let errorMessage = 'Failed to delete application';
+            try {
+                const errorData = JSON.parse(errorText);
+                if (errorData.message) {
+                    errorMessage = errorData.message;
+                }
+            } catch (parseError) {
+                // Use default message if can't parse JSON
+            }
+            
+            throw new Error(`${errorMessage}: ${response.status}`);
+        }
+    } catch (error) {
+        console.error('Error deleting application:', error);
+        alert(`Failed to delete application: ${error.message}`);
     }
 }
 

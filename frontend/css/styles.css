@@ -578,6 +578,21 @@ input[type="file"] {
     background: #0056b3;
 }
 
+.btn-delete {
+    background: #dc3545;
+    color: white;
+    padding: 8px 16px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background 0.3s ease;
+}
+
+.btn-delete:hover {
+    background: #c82333;
+}
+
 .no-data {
     text-align: center;
     padding: 60px 20px;

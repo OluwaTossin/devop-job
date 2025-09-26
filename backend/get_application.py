@@ -2,7 +2,6 @@ import json
 import os
 import psycopg2
 import boto3
-from datetime import datetime
 import logging
 
 # Configure logging
@@ -70,26 +69,52 @@ def lambda_handler(event, context):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
-            SELECT 
-                id,
-                first_name,
-                last_name,
-                email,
-                phone,
-                experience,
-                location,
-                skills,
-                cover_letter,
-                cv_file_path,
-                cv_file_name,
-                cv_file_type,
-                submitted_at,
-                created_at,
-                updated_at
-            FROM applications
-            WHERE id = %s
-        """, (application_id,))
+        # Environment-aware query based on schema differences
+        environment = os.environ.get('ENVIRONMENT', 'dev')
+        if environment == 'prod':
+            # Production schema doesn't have updated_at column
+            cursor.execute("""
+                SELECT 
+                    id,
+                    first_name,
+                    last_name,
+                    email,
+                    phone,
+                    experience,
+                    location,
+                    skills,
+                    cover_letter,
+                    cv_file_path,
+                    cv_file_name,
+                    cv_file_type,
+                    submitted_at,
+                    created_at,
+                    created_at as updated_at
+                FROM applications
+                WHERE id = %s
+            """, (application_id,))
+        else:
+            # Development schema has updated_at column
+            cursor.execute("""
+                SELECT 
+                    id,
+                    first_name,
+                    last_name,
+                    email,
+                    phone,
+                    experience,
+                    location,
+                    skills,
+                    cover_letter,
+                    cv_file_path,
+                    cv_file_name,
+                    cv_file_type,
+                    submitted_at,
+                    created_at,
+                    updated_at
+                FROM applications
+                WHERE id = %s
+            """, (application_id,))
         
         row = cursor.fetchone()
         

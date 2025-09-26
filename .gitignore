@@ -104,3 +104,22 @@ docs/_build/
 *.cer
 *.crt
 secrets.json
+
+# Lambda development and deployment
+temp-lambda/
+lambda-*/
+*lambda*.zip
+get-application*.zip
+prod-lambda*.zip
+
+# AWS CLI output files
+lambda*get-function*
+trap*completed*
+
+# Test files
+test-*.json
+*test*.py
+*.test
+
+# Log files
+*.log
