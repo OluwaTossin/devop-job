@@ -66,6 +66,7 @@ def initialize_database():
     """
     Initialize database schema if it doesn't exist.
     Creates the applications table and necessary indexes.
+    Schema differs between environments: prod uses integer ID, dev uses UUID.
     
     Raises:
         Exception: If database initialization fails
@@ -75,25 +76,49 @@ def initialize_database():
         cursor = conn.cursor()
         
         # Create applications table if it doesn't exist
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS applications (
-                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                first_name VARCHAR(100) NOT NULL,
-                last_name VARCHAR(100) NOT NULL,
-                email VARCHAR(255) NOT NULL,
-                phone VARCHAR(20),
-                experience VARCHAR(50) NOT NULL,
-                location VARCHAR(255),
-                skills TEXT,
-                cover_letter TEXT,
-                cv_file_path VARCHAR(500),
-                cv_file_name VARCHAR(255),
-                cv_file_type VARCHAR(100),
-                submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+        # Use different ID types based on environment
+        if os.environ.get('ENVIRONMENT') == 'prod':
+            # Production: integer ID with auto-increment
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS applications (
+                    id SERIAL PRIMARY KEY,
+                    first_name VARCHAR(100) NOT NULL,
+                    last_name VARCHAR(100) NOT NULL,
+                    email VARCHAR(255) NOT NULL,
+                    phone VARCHAR(20),
+                    experience VARCHAR(50) NOT NULL,
+                    location VARCHAR(255),
+                    skills TEXT,
+                    cover_letter TEXT,
+                    cv_file_path VARCHAR(500),
+                    cv_file_name VARCHAR(255),
+                    cv_file_type VARCHAR(100),
+                    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+        else:
+            # Development: UUID ID
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS applications (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    first_name VARCHAR(100) NOT NULL,
+                    last_name VARCHAR(100) NOT NULL,
+                    email VARCHAR(255) NOT NULL,
+                    phone VARCHAR(20),
+                    experience VARCHAR(50) NOT NULL,
+                    location VARCHAR(255),
+                    skills TEXT,
+                    cover_letter TEXT,
+                    cv_file_path VARCHAR(500),
+                    cv_file_name VARCHAR(255),
+                    cv_file_type VARCHAR(100),
+                    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
         
         # Create indexes for performance
         cursor.execute("""
@@ -223,19 +248,29 @@ def lambda_handler(event, context):
         if not validate_email(body['email']):
             return create_error_response(400, 'Invalid email format')
         
-        # Generate application ID
-        application_id = str(uuid.uuid4())
+        # Generate application ID based on environment
+        # Production uses integer ID, dev uses UUID
+        if os.environ.get('ENVIRONMENT') == 'prod':
+            # For production, let the database generate the ID (don't specify it)
+            application_id = None
+        else:
+            # For development, use UUID
+            application_id = str(uuid.uuid4())
         
         # Handle CV upload if provided
         cv_file_path = None
+        cv_temp_key = None
         if body.get('cv') and body.get('cvFileName'):
             try:
+                # For production, use a temporary ID for S3 upload since we don't have the real ID yet
+                temp_id = application_id if application_id else f"temp_{int(datetime.now().timestamp())}"
                 cv_file_path = upload_cv_to_s3(
                     body['cv'], 
                     body['cvFileName'], 
                     body.get('cvFileType', 'application/pdf'),
-                    application_id
+                    temp_id
                 )
+                cv_temp_key = temp_id if not application_id else None
             except Exception as e:
                 logger.error(f"CV upload failed: {str(e)}")
                 return create_error_response(500, 'Failed to upload CV file')
@@ -244,28 +279,88 @@ def lambda_handler(event, context):
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute("""
-            INSERT INTO applications (
-                id, first_name, last_name, email, phone, experience, 
-                location, skills, cover_letter, cv_file_path, 
-                cv_file_name, cv_file_type
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (
-            application_id,
-            body['firstName'],
-            body['lastName'],
-            body['email'],
-            body.get('phone'),
-            body['experience'],
-            body.get('location'),
-            body['skills'],
-            body.get('coverLetter'),
-            cv_file_path,
-            body.get('cvFileName'),
-            body.get('cvFileType')
-        ))
+        if os.environ.get('ENVIRONMENT') == 'prod':
+            # Production: let database auto-generate integer ID
+            # Handle cv_key column which has NOT NULL constraint
+            cv_key_value = cv_file_path if cv_file_path else 'no-cv-uploaded'
+            cursor.execute("""
+                INSERT INTO applications (
+                    first_name, last_name, cv_key, email, phone, experience, 
+                    location, skills, cover_letter, cv_file_path, 
+                    cv_file_name, cv_file_type
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                body['firstName'],
+                body['lastName'],
+                cv_key_value,  # Use cv_file_path or placeholder for cv_key
+                body['email'],
+                body.get('phone'),
+                body['experience'],
+                body.get('location'),
+                body['skills'],
+                body.get('coverLetter'),
+                cv_file_path,
+                body.get('cvFileName'),
+                body.get('cvFileType')
+            ))
+            # Get the generated ID
+            application_id = cursor.fetchone()[0]
+        else:
+            # Development: use UUID
+            cursor.execute("""
+                INSERT INTO applications (
+                    id, first_name, last_name, email, phone, experience, 
+                    location, skills, cover_letter, cv_file_path, 
+                    cv_file_name, cv_file_type
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                application_id,
+                body['firstName'],
+                body['lastName'],
+                body['email'],
+                body.get('phone'),
+                body['experience'],
+                body.get('location'),
+                body['skills'],
+                body.get('coverLetter'),
+                cv_file_path,
+                body.get('cvFileName'),
+                body.get('cvFileType')
+            ))
         
         conn.commit()
+        
+        # If production and we uploaded a CV with a temporary name, rename it
+        if cv_temp_key and cv_file_path:
+            try:
+                # Generate the correct S3 key with the real application ID
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                file_extension = body.get('cvFileName', '').split('.')[-1] if '.' in body.get('cvFileName', '') else 'pdf'
+                new_s3_key = f"cvs/{application_id}_{timestamp}.{file_extension}"
+                
+                # Copy the file to the new key
+                s3.copy_object(
+                    Bucket=S3_BUCKET,
+                    CopySource={'Bucket': S3_BUCKET, 'Key': cv_file_path},
+                    Key=new_s3_key
+                )
+                
+                # Delete the old file
+                s3.delete_object(Bucket=S3_BUCKET, Key=cv_file_path)
+                
+                # Update the database with the new file path and cv_key
+                cursor.execute("""
+                    UPDATE applications SET cv_file_path = %s, cv_key = %s WHERE id = %s
+                """, (new_s3_key, new_s3_key, application_id))
+                conn.commit()
+                
+                cv_file_path = new_s3_key
+                logger.info(f"CV renamed to: {cv_file_path}")
+            except Exception as e:
+                logger.error(f"Failed to rename CV file: {str(e)}")
+                # Continue anyway - the application is saved
+        
         cursor.close()
         conn.close()
         
