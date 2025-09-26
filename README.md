@@ -96,42 +96,29 @@ cd ../frontend
 aws s3 sync . s3://devops-job-portal-dev-frontend --delete
 ```
 
-## 🧩 CI/CD: Production Deployment (GitHub Actions)
+## 🧩 CI/CD: Dev → Prod Promotion (GitHub Actions)
 
-This repository ships with a production deployment workflow at `.github/workflows/deploy-prod.yml`.
+Unified workflow: `.github/workflows/deploy.yml`.
 
-Key characteristics
-- Two-stage pipeline with artifacts:
-  - terraform-plan: builds Lambda packages deterministically, runs Terraform init/validate, performs safe imports for existing prod resources, and produces a saved plan artifact (`tfplan`).
-  - deploy: downloads the `tfplan` and applies to production; then updates the frontend in S3 and runs basic health checks.
-- Deterministic Lambda packaging: zips are built with stable timestamps to prevent hash drift between jobs.
-- State backend: S3 bucket `terraform-state-devops-job-portal` with DynamoDB table `terraform-locks` (eu‑west‑1).
-- Plan/apply separation: the saved plan is applied without re-planning in the deploy job.
+Highlights
+- Dev stage: packages Lambda zips (with Python dependencies), Terraform init/validate/imports, then `terraform plan -detailed-exitcode`. If there are changes, it applies and runs smoke tests; if not, it skips apply/tests.
+- Prod stage: plan and apply both require manual approval using the `production` environment; uses the same Lambda zip artifacts built in dev.
+- Deterministic packaging: stable timestamps and excludes boto3/botocore (provided by Lambda runtime).
+- Caching: pip cache for Python deps and Terraform providers cache for `.terraform`.
+- Concurrency: cancels in‑progress runs on new pushes to the same ref.
+- Docs-only skip: README.md changes do not trigger the workflow (paths-ignore).
 
 Required GitHub Secrets
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
-- `PROD_DB_PASSWORD` (used as `-var db_password` at plan time)
+- `PROD_DB_PASSWORD`
 
-Workflow-level environment variables
-- `AWS_REGION`: `eu-west-1`
-- `TERRAFORM_VERSION`: pinned to ensure reproducibility
-- `USE_EXISTING_DB_SUBNET_GROUP`: `"true"` in prod to avoid re-creating the DB subnet group
-- `EXISTING_DB_SUBNET_GROUP_NAME`: `"devops-job-portal-prod-db-subnet-group"`
+Environment variables
+- `AWS_REGION`, `TERRAFORM_VERSION`
+- Existing DB subnet group toggles and names per environment
 
-Terraform prod behavior captured in the workflow
-- Uses an existing DB subnet group in prod via a Terraform data source (no creation in prod).
-- Imports an existing RDS instance into state before planning, if present, to avoid `AlreadyExists` errors.
-- Protects against cross‑VPC changes by ignoring `vpc_security_group_ids` on an imported DB instance (prevents invalid cross‑VPC modifications).
-- Uploads plan as an artifact and applies it in a separate job.
-
-Recommended hardening (optional)
-- Replace static AWS keys with GitHub OIDC + an AssumeRole in AWS (least privilege). This removes long‑lived secrets from GitHub and tightens security.
-- Add CodeQL and tfsec/checkov SARIF reporting for security posture visibility.
-- Enable environment protection rules on the `production` environment for manual approval.
-
-How to trigger
-- Push to `main` or use the manual “Run workflow” (with the confirm text).
+Triggering
+- Push/PR to `dev`. PRs get a summary comment; pushes deploy to dev and, on approval, promote to prod.
 
 ## 📁 Project Structure
 
