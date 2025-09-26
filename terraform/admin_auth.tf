@@ -19,7 +19,8 @@ resource "aws_secretsmanager_secret_version" "admin_credentials" {
     username = var.admin_username
     # This is a SHA256 hash of the default password "admin123"
     # In production, use a stronger password and bcrypt hashing
-    password_hash = "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9"
+    # Updated to match provided password: Admin123!@#
+    password_hash = "a8d51fc6a058bfeacb77818d42d420ac1bf31529393a784ec60f7c2443047462"
     jwt_secret    = random_password.jwt_secret.result
   })
 }

@@ -11,8 +11,9 @@
  * @date September 2025
  */
 
-// API Configuration - Production Environment
-const API_BASE_URL = 'https://szjg0kym4f.execute-api.eu-west-1.amazonaws.com/prod';
+// API Configuration - Placeholder replaced in CI per environment (dev/prod)
+// Do not change this placeholder manually; the GitHub Actions workflow replaces it with the actual API URL.
+const API_BASE_URL = 'https://your-api-gateway-url.execute-api.us-east-1.amazonaws.com/dev';
 
 // Global application state
 let applications = [];
