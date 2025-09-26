@@ -333,6 +333,8 @@ jobs:
       run: |
         aws s3 sync frontend/ s3://${{ steps.terraform-output.outputs.frontend_bucket }} --delete
         aws s3 cp frontend/index.html s3://${{ steps.terraform-output.outputs.frontend_bucket }}/index.html --cache-control "no-cache"
+        # Prevent stale JS by disabling cache on app.js (and set proper content-type)
+        aws s3 cp frontend/js/app.js s3://${{ steps.terraform-output.outputs.frontend_bucket }}/js/app.js --cache-control "no-cache" --content-type "application/javascript"
 
     - name: Invalidate CloudFront (if exists)
       run: |
@@ -631,6 +633,8 @@ jobs:
       run: |
         aws s3 sync frontend/ s3://${{ steps.terraform-output-prod.outputs.frontend_bucket }} --delete
         aws s3 cp frontend/index.html s3://${{ steps.terraform-output-prod.outputs.frontend_bucket }}/index.html --cache-control "no-cache"
+        # Prevent stale JS by disabling cache on app.js (and set proper content-type)
+        aws s3 cp frontend/js/app.js s3://${{ steps.terraform-output-prod.outputs.frontend_bucket }}/js/app.js --cache-control "no-cache" --content-type "application/javascript"
 
     - name: Production Health Check
       run: |
